@@ -1,0 +1,5 @@
+# contém o scriptId (ver gas/.clasp.json.example)
+gas/.clasp.json
+.clasprc.json
+node_modules/
+.DS_Store
