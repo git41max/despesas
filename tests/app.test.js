@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
 const trecho = html.split('// <utils>')[1].split('\n').slice(1).join('\n').split('// </utils>')[0];
-const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista, juntarNomes, textoParaQuem, lerCSV, decimalPonto, dataDMA, lerExtratoWise, pernasDesembolso, casarExtrato };')();
+const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista, juntarNomes, textoParaQuem, lerCSV, decimalPonto, dataDMA, lerExtratoWise, pernasDesembolso, casarExtrato, lerConvite };')();
 
 test('parseValor aceita vírgula e ponto como decimal', () => {
   assert.equal(U.parseValor('120,50', 2), 12050);
@@ -231,4 +231,20 @@ test('casarExtrato prefere o mesmo id e depois a data mais próxima', () => {
     { id: 'perto', moeda: 'USD', valor: 100, data: '2025-03-10' },
     { id: 'wise:X', moeda: 'USD', valor: 100, data: '2025-03-10' },
   ]), ['wise:X']);
+});
+
+test('lerConvite extrai token e API do link inteiro ou só do fragmento', () => {
+  const api = 'https://script.google.com/macros/s/ABC/exec';
+  const link = 'https://fulano.github.io/despesas/#t=tok123&api=' + encodeURIComponent(api);
+  assert.deepEqual(U.lerConvite(link), { token: 'tok123', api: api });
+  assert.deepEqual(U.lerConvite('  ' + link + '\n'), { token: 'tok123', api: api });
+  assert.deepEqual(U.lerConvite('#t=tok123'), { token: 'tok123', api: '' });
+  assert.deepEqual(U.lerConvite('t=tok123'), { token: 'tok123', api: '' });
+});
+
+test('lerConvite devolve vazio para link sem convite', () => {
+  assert.deepEqual(U.lerConvite('https://fulano.github.io/despesas/'), { token: '', api: '' });
+  assert.deepEqual(U.lerConvite(''), { token: '', api: '' });
+  assert.deepEqual(U.lerConvite(null), { token: '', api: '' });
+  assert.deepEqual(U.lerConvite('#outra=coisa'), { token: '', api: '' });
 });

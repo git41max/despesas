@@ -232,6 +232,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .tela h1 { font-size: 24px; margin-bottom: 12px; }
 .tela .lista-nomes { display: grid; gap: 8px; margin-top: 20px; }
 .tela .lista-nomes button { min-height: 52px; font-size: 18px; }
+.tela #convite { margin-top: 16px; }
+.tela #entrar { width: 100%; margin-top: 12px; }
 
 #toast {
   position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -256,7 +258,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.3.0';
+const VERSAO = '1.3.1';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -540,6 +542,15 @@ function casarExtrato(saidas, pernas) {
     usadas[escolha] = true;
     return pernas[escolha].id;
   });
+}
+/** Link de convite (inteiro, só o fragmento ou "t=...") -> { token, api }. */
+function lerConvite(texto) {
+  let h = String(texto || '').trim();
+  const i = h.indexOf('#');
+  if (i >= 0) h = h.slice(i + 1);
+  else if (!/^(t|api)=/.test(h)) return { token: '', api: '' };
+  const p = new URLSearchParams(h);
+  return { token: (p.get('t') || '').trim(), api: (p.get('api') || '').trim() };
 }
 // </utils>
 
@@ -1725,7 +1736,23 @@ function render() {
 function renderConvite() {
   raiz.innerHTML = '<div class="tela"><h1>Despesas da Viagem</h1>' +
     '<p class="nota">Abra o link de convite da viagem que o grupo compartilhou.' +
-    (token() && !apiUrl() ? '<br><br>O endereço do servidor não está configurado neste app.' : '') + '</p></div>';
+    (token() && !apiUrl() ? '<br><br>O endereço do servidor não está configurado neste app.' : '') + '</p>' +
+    '<p class="nota">No app instalado na tela de início, copie o link de convite e cole aqui:</p>' +
+    '<input id="convite" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…#t=…">' +
+    '<p class="nota" id="conviteErro" hidden></p>' +
+    '<button type="button" class="primario" id="entrar">Entrar</button></div>';
+  $('#entrar').onclick = () => {
+    const c = lerConvite($('#convite').value);
+    const erro = $('#conviteErro');
+    if (!c.token || (!c.api && !apiUrl())) {
+      erro.textContent = c.token ? 'O link não traz o endereço do servidor (api=…).' : 'Link inválido: falta o trecho #t=…';
+      erro.hidden = false;
+      return;
+    }
+    aplicarConvite(c);
+    render();
+    atualizar();
+  };
 }
 
 function renderCarregando() {
@@ -1938,18 +1965,19 @@ raiz.addEventListener('click', (ev) => {
 // ---------------------------------------------------------------------------
 // Inicialização
 
-function lerFragmento() {
-  const h = location.hash.replace(/^#/, '');
-  if (!h) return;
-  const p = new URLSearchParams(h);
-  const t = p.get('t');
-  const api = p.get('api');
-  if (t) {
-    if (t !== token()) { gravar(LS.estado, null); estado = null; }
-    gravar(LS.token, t);
+function aplicarConvite(c) {
+  if (c.token) {
+    if (c.token !== token()) { gravar(LS.estado, null); estado = null; }
+    gravar(LS.token, c.token);
   }
-  if (api) gravar(LS.api, api);
-  if (t || api) history.replaceState(null, '', location.pathname + location.search);
+  if (c.api) gravar(LS.api, c.api);
+}
+
+function lerFragmento() {
+  if (!location.hash) return;
+  const c = lerConvite(location.hash);
+  aplicarConvite(c);
+  if (c.token || c.api) history.replaceState(null, '', location.pathname + location.search);
 }
 
 lerFragmento();
