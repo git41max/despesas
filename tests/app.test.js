@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
 const trecho = html.split('// <utils>')[1].split('\n').slice(1).join('\n').split('// </utils>')[0];
-const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista };')();
+const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista, juntarNomes, textoParaQuem };')();
 
 test('parseValor aceita vírgula e ponto como decimal', () => {
   assert.equal(U.parseValor('120,50', 2), 12050);
@@ -95,4 +95,24 @@ test('leitura de fontes e pesos para exibição', () => {
   assert.deepEqual(U.lerFontes(''), []);
   assert.deepEqual(U.lerPesos('Ana:2;Bruno:1'), { Ana: 2, Bruno: 1 });
   assert.deepEqual(U.lista('Ana; Bruno;'), ['Ana', 'Bruno']);
+});
+
+test('juntarNomes usa vírgulas e "e" no último', () => {
+  assert.equal(U.juntarNomes([]), '');
+  assert.equal(U.juntarNomes(['Ana']), 'Ana');
+  assert.equal(U.juntarNomes(['Ana', 'Bruno']), 'Ana e Bruno');
+  assert.equal(U.juntarNomes(['Ana', 'Bruno', 'Carla']), 'Ana, Bruno e Carla');
+});
+
+test('textoParaQuem descreve os participantes da despesa', () => {
+  const todos = ['Ana', 'Bruno', 'Carla'];
+  assert.equal(U.textoParaQuem('Ana', ['Ana', 'Bruno', 'Carla'], todos, ''), 'todos');
+  assert.equal(U.textoParaQuem('Ana', ['Carla', 'Ana', 'Bruno'], todos, ''), 'todos');
+  assert.equal(U.textoParaQuem('Ana', ['Carla'], todos, ''), 'Carla');
+  assert.equal(U.textoParaQuem('Carla', ['Ana', 'Bruno'], todos, ''), 'Ana e Bruno');
+  assert.equal(U.textoParaQuem('Ana', ['Ana'], todos, ''), 'si');
+  assert.equal(U.textoParaQuem('Ana', ['Ana', 'Bruno', 'Carla'], todos, 'Ana:2;Bruno:1;Carla:1'), 'todos (Ana ×2)');
+  assert.equal(U.textoParaQuem('Ana', ['Ana', 'Bruno'], todos, 'Ana:2;Bruno:3'), 'Ana e Bruno (Ana ×2, Bruno ×3)');
+  // Viagem de uma pessoa só: não chamar de "todos".
+  assert.equal(U.textoParaQuem('Ana', ['Ana'], ['Ana'], ''), 'si');
 });
