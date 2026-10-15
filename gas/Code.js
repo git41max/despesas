@@ -129,13 +129,19 @@ function aba(ss, nome) {
   return sh;
 }
 
-function lerConfig(ss) {
+/** Aba Config como { chave: valor }, sem interpretar. */
+function lerConfigBruta(ss) {
   var valores = aba(ss, ABA_CONFIG).getDataRange().getValues();
   var cfg = {};
   valores.forEach(function (linha) {
     var chave = String(linha[0] || '').trim();
     if (chave) cfg[chave] = linha[1];
   });
+  return cfg;
+}
+
+function lerConfig(ss) {
+  var cfg = lerConfigBruta(ss);
   return {
     nome_viagem: String(cfg.nome_viagem || '').trim(),
     participantes: parseLista(cfg.participantes),
@@ -438,11 +444,12 @@ function configurarPlanilha() {
   var cfg = ss.getSheetByName(ABA_CONFIG);
   if (!cfg) {
     cfg = ss.insertSheet(ABA_CONFIG);
-    cfg.getRange(1, 1, 4, 2).setValues([
+    cfg.getRange(1, 1, 5, 2).setValues([
       ['chave', 'valor'],
       ['nome_viagem', 'Minha viagem'],
       ['token', ''],
       ['participantes', 'Ana;Bruno;Carla'],
+      ['url_app', ''],
     ]);
     cfg.getRange('A:B').setNumberFormat('@');
     cfg.setFrozenRows(1);
@@ -480,25 +487,104 @@ function configurarPlanilha() {
   atualizarResumo(ss);
 }
 
+/** Grava chave | valor na aba Config, na linha da chave ou numa nova no fim. */
+function gravarConfig(ss, chave, valor) {
+  var sh = aba(ss, ABA_CONFIG);
+  var valores = sh.getDataRange().getValues();
+  var linha = -1;
+  valores.forEach(function (l, i) { if (String(l[0]).trim() === chave) linha = i + 1; });
+  if (linha < 0) linha = sh.getLastRow() + 1;
+  sh.getRange(linha, 1, 1, 2).setNumberFormat('@').setValues([[chave, valor]]);
+}
+
 /** Gera token novo e grava em Config e nas Script Properties (o link antigo deixa de valer). */
 function gerarNovoToken() {
   var token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
   PropertiesService.getScriptProperties().setProperty('TOKEN', token);
-  var sh = aba(planilha(), ABA_CONFIG);
-  var valores = sh.getDataRange().getValues();
-  var linha = -1;
-  valores.forEach(function (l, i) { if (String(l[0]).trim() === 'token') linha = i + 1; });
-  if (linha < 0) linha = sh.getLastRow() + 1;
-  sh.getRange(linha, 1, 1, 2).setValues([['token', token]]);
-  console.log('Novo token gerado. Link: <URL do app>#t=' + token);
+  gravarConfig(planilha(), 'token', token);
+  console.log('Novo token gerado. Para o link: Despesas > Mostrar link de convite.');
   return token;
 }
 
+// ---------------------------------------------------------------------------
+// Link de convite
+
+function urlApiValida(url) {
+  return /^https:\/\/script\.google\.com\/\S+\/exec$/.test(String(url || '').trim());
+}
+
+function urlAppValida(url) {
+  return /^https?:\/\/[^\s#]+$/.test(String(url || '').trim().split('#')[0]);
+}
+
+/** <app>#t=<token>&api=<URL /exec codificada>, o formato lido pelo app. */
+function montarLinkConvite(urlApp, token, urlApi) {
+  var base = String(urlApp).trim().split('#')[0];
+  if (!/\/$/.test(base) && !/\.html?$/.test(base)) base += '/';
+  return base + '#t=' + encodeURIComponent(token) + '&api=' + encodeURIComponent(String(urlApi).trim());
+}
+
+/** URL /exec da implantação: a que o próprio script informa ou, se não vier, a de Config.url_api. */
+function urlDaApi(cfg) {
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { /* ainda não implantado */ }
+  if (urlApiValida(url)) return url;
+  var salva = String(cfg.url_api || '').trim();
+  return urlApiValida(salva) ? salva : '';
+}
+
+function perguntar(ui, titulo, texto) {
+  var r = ui.prompt(titulo, texto, ui.ButtonSet.OK_CANCEL);
+  return r.getSelectedButton() === ui.Button.OK ? r.getResponseText().trim() : '';
+}
+
+/** Menu Despesas > Mostrar link de convite: monta o link completo, perguntando o que faltar. */
 function mostrarToken() {
-  var token = PropertiesService.getScriptProperties().getProperty('TOKEN');
-  SpreadsheetApp.getUi().alert('Link de convite',
-    'Envie ao grupo:\n\n<URL do app>#t=' + token + '\n\n(troque <URL do app> pelo endereço no GitHub Pages)',
-    SpreadsheetApp.getUi().ButtonSet.OK);
+  var ui = SpreadsheetApp.getUi();
+  var ss = planilha();
+  var token = PropertiesService.getScriptProperties().getProperty('TOKEN') || gerarNovoToken();
+  var cfg = lerConfigBruta(ss);
+
+  var urlApp = String(cfg.url_app || '').trim();
+  if (!urlAppValida(urlApp)) {
+    urlApp = perguntar(ui, 'Endereço do app',
+      'Cole o endereço do app no GitHub Pages (ex.: https://usuario.github.io/despesas/). Fica salvo em Config.url_app.');
+    if (!urlApp) return;
+    if (!urlAppValida(urlApp)) return ui.alert('Endereço do app', 'O endereço precisa começar com https://.', ui.ButtonSet.OK);
+    gravarConfig(ss, 'url_app', urlApp);
+  }
+
+  var urlApi = urlDaApi(cfg);
+  if (!urlApi) {
+    urlApi = perguntar(ui, 'Endereço da API',
+      'Em Implantar > Gerenciar implantações, copie a URL do App da Web (termina em /exec) e cole aqui. Fica salva em Config.url_api.');
+    if (!urlApi) return;
+    if (!urlApiValida(urlApi)) {
+      return ui.alert('Endereço da API', 'A URL precisa começar com https://script.google.com/ e terminar em /exec.', ui.ButtonSet.OK);
+    }
+    gravarConfig(ss, 'url_api', urlApi);
+  }
+
+  ui.showModalDialog(dialogoLink(montarLinkConvite(urlApp, token, urlApi)), 'Link de convite');
+}
+
+function dialogoLink(link) {
+  var esc = link.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:sans-serif;font-size:14px">' +
+    '<p>Envie este link ao grupo. Quem abrir no celular entra direto na viagem.</p>' +
+    '<textarea id="l" readonly rows="5" style="width:100%;box-sizing:border-box;font-size:13px">' + esc + '</textarea>' +
+    '<p><button id="b" style="font-size:15px;padding:8px 16px">Copiar</button> <span id="s"></span></p></div>' +
+    '<script>' +
+    'var l = document.getElementById("l");' +
+    'function sel() { l.focus(); l.select(); l.setSelectionRange(0, l.value.length); }' +
+    'sel();' +
+    'document.getElementById("b").onclick = function () {' +
+    '  sel(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {}' +
+    '  document.getElementById("s").textContent = ok ? "Copiado." : "Selecione o texto e copie.";' +
+    '};' +
+    '</script>'
+  ).setWidth(460).setHeight(260);
 }
 
 function recalcularResumo() {

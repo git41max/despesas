@@ -30,13 +30,19 @@ tests/  node --test
    Ao mudar o código depois: `clasp push && clasp deploy -i <deploymentId>` (mesma URL).
 5. **Publicar o app**: em *Settings > Pages* do repositório, escolha *Source: GitHub Actions*.
    O workflow `.github/workflows/pages.yml` roda os testes e publica a pasta `app/` a cada push na `main`.
-6. **Link de convite**: envie ao grupo
+6. **Link de convite**: na planilha, *Despesas > Mostrar link de convite*. Na primeira vez o menu
+   pergunta o endereço do app (`https://<usuario>.github.io/<repo>/`) e, se não conseguir
+   descobrir sozinho, a URL `/exec`; os dois ficam salvos em `Config` (`url_app`, `url_api`).
+   Ele mostra o link completo, com botão *Copiar*, no formato
    ```
    https://<usuario>.github.io/<repo>/#t=<token>&api=<URL /exec codificada>
    ```
-   O token está em *Despesas > Mostrar link de convite*. A URL da API pode ir no link
-   (`api=`, com `encodeURIComponent`) ou fixa na constante `API_URL` no topo de `app/index.html`.
-   O app guarda os dois no aparelho e limpa a URL. No iPhone: *Compartilhar > Adicionar à Tela de Início*.
+   Envie ao grupo. O app guarda token e API no aparelho e limpa a URL.
+   No iPhone: abra o link no Safari, *Compartilhar > Adicionar à Tela de Início*; na primeira
+   abertura pela tela de início, cole o mesmo link no campo que aparece (o app instalado não
+   enxerga o que ficou salvo no Safari).
+   Os menus da planilha não aparecem no app Planilhas do iPhone: use o Safari (se preciso,
+   *aA > Solicitar site para computador*).
 
 Nunca coloque o token, o ID da planilha ou o `scriptId` no repositório.
 

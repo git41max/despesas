@@ -44,6 +44,7 @@ PWA (GitHub Pages)  --POST JSON-->  Apps Script (Web App)  --append-->  Google S
 /tests
   calc.test.js          # node --test
   app.test.js           # funções puras do cliente (trecho entre // <utils> e // </utils> do index.html)
+  code.test.js          # funções puras de Code.js (link de convite)
 /.github/workflows
   pages.yml             # testes + publicação de /app no GitHub Pages
 CLAUDE.md
@@ -59,6 +60,7 @@ Uma planilha por viagem. Abas:
 
 **Config** (chave | valor)
 - `nome_viagem`, `token` (ver Segurança), `participantes` (nomes separados por `;`, ordem fixa)
+- `url_app` (endereço do app no GitHub Pages) e, opcional, `url_api` (URL `/exec`, usada quando o script não consegue descobri-la sozinho): servem só para *Despesas > Mostrar link de convite* montar o link completo; o menu pergunta e grava o que faltar
 
 **Moedas** (moeda | casas_decimais | simbolo)
 - Uma linha por moeda usada na viagem. `casas_decimais` segue a ISO 4217 (BRL/USD/EUR = 2; JPY/CLP = 0). Ex.: `BRL | 2 | R$`, `USD | 2 | US$`, `EUR | 2 | €`.
@@ -149,7 +151,7 @@ Detalhes que já causaram problema nesse tipo de stack:
 ## Segurança
 
 Nível adequado para um grupo de amigos, não para dados sensíveis:
-- Um token aleatório por viagem em `Config.token` (e espelhado em Script Properties, que é o valor conferido pelo servidor; trocar só pelo menu *Despesas > Gerar novo token*). O link compartilhado é `https://.../#t=<token>`; o app lê o fragmento (que não vai para logs de servidor), guarda localmente e limpa a URL. A URL `/exec` fica na constante `API_URL` de `index.html` ou vai no próprio link como `&api=<url codificada>`.
+- Um token aleatório por viagem em `Config.token` (e espelhado em Script Properties, que é o valor conferido pelo servidor; trocar só pelo menu *Despesas > Gerar novo token*). O link compartilhado é `https://.../#t=<token>&api=<URL /exec codificada>`, montado pelo menu *Despesas > Mostrar link de convite*; o app lê o fragmento (que não vai para logs de servidor), guarda localmente e limpa a URL. A URL `/exec` fica na constante `API_URL` de `index.html` ou vai no próprio link como `&api=<url codificada>`.
 - Sem login Google. Na primeira abertura a pessoa escolhe o próprio nome na lista de participantes; o nome vai em `criado_por`/`editado_por`.
 - Nunca colocar token, ID da planilha ou chaves de API no repositório.
 - Nunca commitar extratos bancários, nem reais nem sintéticos (`*.csv` e `*.ofx` estão no `.gitignore`). Os testes do leitor montam no próprio código poucas linhas fictícias, só com as colunas usadas.
