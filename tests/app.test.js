@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
 const trecho = html.split('// <utils>')[1].split('\n').slice(1).join('\n').split('// </utils>')[0];
-const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista, juntarNomes, textoParaQuem };')();
+const U = new Function(trecho + '\nreturn { formatarNumero, parseValor, parseDecimal, calcularPago, calcularQuitado, cotacaoDe, lerFontes, lerPesos, lista, juntarNomes, textoParaQuem, lerCSV, decimalPonto, dataDMA, lerExtratoWise, pernasDesembolso, casarExtrato };')();
 
 test('parseValor aceita vírgula e ponto como decimal', () => {
   assert.equal(U.parseValor('120,50', 2), 12050);
@@ -115,4 +115,120 @@ test('textoParaQuem descreve os participantes da despesa', () => {
   assert.equal(U.textoParaQuem('Ana', ['Ana', 'Bruno'], todos, 'Ana:2;Bruno:3'), 'Ana e Bruno (Ana ×2, Bruno ×3)');
   // Viagem de uma pessoa só: não chamar de "todos".
   assert.equal(U.textoParaQuem('Ana', ['Ana'], ['Ana'], ''), 'si');
+});
+
+// ---------------------------------------------------------------------------
+// Importar extrato (Fase 2)
+
+const CASAS = { BRL: 2, USD: 2, EUR: 2, JPY: 0, VND: 0 };
+const casasDe = (m) => (m in CASAS ? CASAS[m] : 2);
+// Nenhum extrato (real ou sintético) fica no repositório: o CSV é montado aqui com linhas fictícias,
+// só com as colunas que o leitor usa.
+const COLUNAS_WISE = ['TransferWise ID', 'Date', 'Amount', 'Currency', 'Description', 'Exchange To',
+  'Merchant', 'Exchange To Amount', 'Transaction Type', 'Transaction Details Type'];
+function csvWise(linhas) {
+  const q = (v) => (/[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+  return [COLUNAS_WISE.map((c) => '"' + c + '"').join(',')]
+    .concat(linhas.map((l) => COLUNAS_WISE.map((c) => q(String(l[c] == null ? '' : l[c]))).join(','))).join('\n');
+}
+const cartao = (id, data, valor, merchant, para, paraValor) => ({
+  'TransferWise ID': id, Date: data, Amount: valor, Currency: 'USD', Merchant: merchant,
+  'Exchange To': para || '', 'Exchange To Amount': paraValor || '', 'Transaction Type': 'DEBIT', 'Transaction Details Type': 'CARD',
+});
+const wiseCsv = csvWise([
+  cartao('CARD-9', '08-03-2025', '-2.95', 'Loja A', 'VND', '75000'),
+  cartao('CARD-8', '08-03-2025', '-0.87', 'Loja B', 'VND', '22000'),
+  cartao('CARD-7', '08-03-2025', '-0.87', 'Loja C', 'VND', '22000'),
+  cartao('CARD-6', '07-03-2025', '-12.50', 'Museu D'),
+  Object.assign(cartao('CARD-5', '07-03-2025', '3.27', 'Loja A'), { 'Transaction Type': 'CREDIT' }), // estorno
+  { 'TransferWise ID': 'TRANSFER-4', Date: '07-03-2025', Amount: '-40.00', Currency: 'USD',
+    Description: 'Enviou dinheiro para Pessoa X com a referência "x"', 'Transaction Type': 'DEBIT', 'Transaction Details Type': 'TRANSFER' },
+  { 'TransferWise ID': 'BALANCE-3', Date: '06-03-2025', Amount: '-100.00', Currency: 'USD', 'Exchange To': 'EUR',
+    'Exchange To Amount': '92.00', 'Transaction Type': 'DEBIT', 'Transaction Details Type': 'CONVERSION' },
+  { 'TransferWise ID': 'TRANSFER-2', Date: '06-03-2025', Amount: '600.00', Currency: 'USD',
+    'Transaction Type': 'CREDIT', 'Transaction Details Type': 'DEPOSIT' },
+  cartao('CARD-1', '06-03-2025', '-8.78', 'Restaurante E', 'VND', '222480'),
+]);
+
+test('lerCSV lida com aspas, aspas escapadas, BOM e CRLF', () => {
+  assert.deepEqual(U.lerCSV('﻿a,"b,c","d ""e"""\r\n1,,3\r\n'), [['a', 'b,c', 'd "e"'], ['1', '', '3']]);
+  assert.deepEqual(U.lerCSV('x,y\n\n"1\n2",3'), [['x', 'y'], ['1\n2', '3']]);
+});
+
+test('decimalPonto converte para unidades mínimas', () => {
+  assert.equal(U.decimalPonto('-2.95', 2), 295);
+  assert.equal(U.decimalPonto('600.00', 2), 60000);
+  assert.equal(U.decimalPonto('75000', 0), 75000);
+  assert.equal(U.decimalPonto('75000.00', 0), 75000);
+  assert.equal(U.decimalPonto('1.005', 2), 101); // meio-para-cima
+  assert.equal(U.decimalPonto('1.004', 2), 100);
+  assert.equal(U.decimalPonto('', 2), null);
+  assert.equal(U.decimalPonto('1,50', 2), null);
+});
+
+test('dataDMA converte DD-MM-AAAA', () => {
+  assert.equal(U.dataDMA('08-03-2025'), '2025-03-08');
+  assert.equal(U.dataDMA('2025-03-08'), '');
+});
+
+test('lerExtratoWise: só saídas; compra em outra moeda vira compra + fonte', () => {
+  const r = U.lerExtratoWise(wiseCsv, casasDe);
+  assert.equal(r.origem, 'Wise');
+  // estorno (CREDIT), depósito (CREDIT) e conversão entre saldos ficam de fora
+  assert.equal(r.ignoradas, 3);
+  assert.deepEqual(r.saidas.map((s) => s.ref), [
+    'wise:CARD-9', 'wise:CARD-8', 'wise:CARD-7', 'wise:CARD-6', 'wise:TRANSFER-4', 'wise:CARD-1',
+  ]);
+  const vnd = r.saidas[0];
+  assert.deepEqual(
+    { data: vnd.data, descricao: vnd.descricao, moeda: vnd.moeda, valor: vnd.valor, moedaSaldo: vnd.moedaSaldo, valorSaldo: vnd.valorSaldo, sugerida: vnd.sugerida },
+    { data: '2025-03-08', descricao: 'Loja A', moeda: 'VND', valor: 75000, moedaSaldo: 'USD', valorSaldo: 295, sugerida: true });
+  const usd = r.saidas[3];
+  assert.deepEqual([usd.moeda, usd.valor, usd.moedaSaldo, usd.valorSaldo], ['USD', 1250, 'USD', 1250]);
+  // transferência enviada aparece, mas desmarcada (pode ser pagamento a alguém do grupo)
+  const transf = r.saidas[4];
+  assert.equal(transf.sugerida, false);
+  assert.equal(transf.descricao, 'Enviou dinheiro para Pessoa X com a referência "x"');
+});
+
+test('lerExtratoWise rejeita arquivo de outro formato', () => {
+  assert.throws(() => U.lerExtratoWise('Data,Valor\n01/01/2025,10', casasDe), /Wise/);
+  assert.throws(() => U.lerExtratoWise('', casasDe), /vazio/);
+});
+
+test('pernasDesembolso: fontes, compra, pagamento e o que foi transferido no acerto', () => {
+  const ls = [
+    { id: 'a', tipo: 'despesa', pagador: 'Ana', moeda: 'JPY', valor: 10000, fontes: 'USD:6800', data: '2025-03-01' },
+    { id: 'b', tipo: 'despesa', pagador: 'Ana', moeda: 'USD', valor: 8000, fontes: 'USD:5000;EUR:2700', data: '2025-03-02' },
+    { id: 'c', tipo: 'despesa', pagador: 'Ana', moeda: 'BRL', valor: 1000, fontes: '', data: '2025-03-03' },
+    { id: 'd', tipo: 'pagamento', pagador: 'Ana', moeda: 'USD', valor: 500, data: '2025-03-04' },
+    { id: 'e', tipo: 'acerto_cruzado', pagador: 'Ana', moeda: 'USD', valor: 5000, moeda_paga: 'EUR', valor_pago: 4600, data: '2025-03-05' },
+    { id: 'f', tipo: 'despesa', pagador: 'Bruno', moeda: 'USD', valor: 999, fontes: '', data: '2025-03-05' },
+  ];
+  assert.deepEqual(U.pernasDesembolso(ls, 'Ana').map((p) => [p.id, p.moeda, p.valor]), [
+    ['a', 'USD', 6800], ['b', 'USD', 5000], ['b', 'EUR', 2700], ['c', 'BRL', 1000], ['d', 'USD', 500], ['e', 'EUR', 4600],
+  ]);
+});
+
+test('casarExtrato: mesma moeda e valor do desembolso, ±2 dias, um para um', () => {
+  const saidas = U.lerExtratoWise(wiseCsv, casasDe).saidas;
+  const pernas = [
+    { id: 'm1', moeda: 'USD', valor: 87, data: '2025-03-07' },  // casa com uma das duas de 0,87
+    { id: 'm2', moeda: 'USD', valor: 878, data: '2025-03-09' }, // 3 dias de distância: não casa
+    { id: 'm3', moeda: 'VND', valor: 75000, data: '2025-03-08' }, // moeda da compra, não do desembolso: não casa
+    { id: 'wise:CARD-6', moeda: 'USD', valor: 1250, data: '2025-03-07' }, // importado antes
+  ];
+  assert.deepEqual(U.casarExtrato(saidas, pernas), [null, 'm1', null, 'wise:CARD-6', null, null]);
+});
+
+test('casarExtrato prefere o mesmo id e depois a data mais próxima', () => {
+  const saidas = [{ ref: 'wise:X', data: '2025-03-10', moedaSaldo: 'USD', valorSaldo: 100 }];
+  assert.deepEqual(U.casarExtrato(saidas, [
+    { id: 'longe', moeda: 'USD', valor: 100, data: '2025-03-12' },
+    { id: 'perto', moeda: 'USD', valor: 100, data: '2025-03-09' },
+  ]), ['perto']);
+  assert.deepEqual(U.casarExtrato(saidas, [
+    { id: 'perto', moeda: 'USD', valor: 100, data: '2025-03-10' },
+    { id: 'wise:X', moeda: 'USD', valor: 100, data: '2025-03-10' },
+  ]), ['wise:X']);
 });

@@ -68,7 +68,7 @@ Uma planilha por viagem. Abas:
 
 | coluna | tipo | observação |
 |---|---|---|
-| id | texto | UUID gerado no cliente |
+| id | texto | UUID gerado no cliente. Lançamentos importados de extrato usam `<banco>:<id da transação>` (ex.: `wise:CARD-2295381044`), o que torna a reimportação idempotente |
 | tipo | texto | `despesa`, `pagamento` ou `acerto_cruzado` |
 | data | AAAA-MM-DD | data da compra ou da transferência |
 | descricao | texto | |
@@ -152,6 +152,7 @@ Nível adequado para um grupo de amigos, não para dados sensíveis:
 - Um token aleatório por viagem em `Config.token` (e espelhado em Script Properties, que é o valor conferido pelo servidor; trocar só pelo menu *Despesas > Gerar novo token*). O link compartilhado é `https://.../#t=<token>`; o app lê o fragmento (que não vai para logs de servidor), guarda localmente e limpa a URL. A URL `/exec` fica na constante `API_URL` de `index.html` ou vai no próprio link como `&api=<url codificada>`.
 - Sem login Google. Na primeira abertura a pessoa escolhe o próprio nome na lista de participantes; o nome vai em `criado_por`/`editado_por`.
 - Nunca colocar token, ID da planilha ou chaves de API no repositório.
+- Nunca commitar extratos bancários, nem reais nem sintéticos (`*.csv` e `*.ofx` estão no `.gitignore`). Os testes do leitor montam no próprio código poucas linhas fictícias, só com as colunas usadas.
 
 ## Frontend
 
@@ -165,7 +166,8 @@ Telas: cabeçalho compacto com totais; botão flutuante "+ Nova despesa" (o "Adi
 - **Acerto de contas**: alternar entre visão por moeda e visão por par (o alternador só aparece quando há dívidas em mais de uma moeda). Texto das transferências: `A deve a B`, com um botão por moeda. Tocar na dívida abre "Registrar pagamento" pré-preenchido; no topo desse formulário, o alternador "Mesma moeda / Outra moeda" troca entre pagamento e acerto cruzado mantendo pessoas, valor e data.
 - **Formulários**: data como chips "Hoje / Ontem / Outra data" (o campo de data só aparece em "Outra data"); todo seletor de moeda tem "+ Nova moeda…", que abre o cadastro por cima do formulário e já seleciona a moeda criada; ao abrir um lançamento existente, mostrar quem criou/editou e quando.
 - **Excluir** não pede confirmação: o item some da lista, a exclusão espera 5 s na fila (`ate` no item da fila) e o aviso oferece "Desfazer".
-- **Pendentes** = lançamentos com `status = pendente` aguardando confirmação. A fila offline é outra coisa: mostrar à parte, como "não sincronizados".
+- **Pendentes** = lançamentos com `status = pendente` aguardando confirmação. A fila offline é outra coisa: mostrar à parte, como "não sincronizados". O selo "N pendentes" filtra a lista e mostra "Confirmar pendentes" (confirmação em lote, com caixas de seleção). No formulário de um pendente, "Confirmar" salva as edições e confirma.
+- **Importar extrato**: no menu. O arquivo é lido só no aparelho; mostra as saídas ainda não lançadas (marcadas por padrão as compras com cartão), as já lançadas (recolhidas) e quantas entradas/conversões foram ignoradas. As marcadas viram pendentes pagas por quem importa, divididas entre os participantes escolhidos; moedas novas do extrato são cadastradas junto.
 - Fila offline em `localStorage`; sincronizar no evento `online` e ao abrir o app. Lista de moedas e participantes em cache local.
 - Tema escuro como padrão, respeitando `prefers-color-scheme`. Layout pensado para iPhone (safe areas, alvos de toque ≥ 44px).
 - Interface em português do Brasil.
@@ -178,7 +180,13 @@ Trabalhar uma fase por vez. Não iniciar a seguinte sem confirmação.
 Planilha modelo, `Calc.js` com testes passando, API completa, PWA com "Adicionar rapidamente", lista, acerto de contas por moeda e por par, fontes de pagamento, fluxo de acerto cruzado, cadastro de moeda e fila offline.
 
 **Fase 2 — Importar extrato** (pronto quando: compras do extrato não lançadas viram pendentes e podem ser confirmadas em lote)
-Parse de OFX/CSV no próprio navegador; o extrato bruto nunca é enviado ao servidor. Cada linha do extrato é um desembolso, então a comparação é feita contra as **pernas** do mesmo pagador (mesma moeda, valor igual, data ±2 dias), não contra a moeda da compra; só linhas sem correspondência aparecem como candidatas. O usuário marca as que quer e elas entram como `pendente`, origem `extrato`, com a linha do extrato como fonte. Se o extrato informar moeda e valor originais (comum em contas multimoeda e faturas de cartão), preencher `moeda`/`valor` da compra com eles. Uma compra que saiu de dois saldos aparece em duas linhas do extrato; o app permite juntá-las num só lançamento antes de confirmar.
+Parse de OFX/CSV no próprio navegador; o extrato bruto nunca é enviado ao servidor. Cada linha do extrato é um desembolso, então a comparação é feita contra as **pernas** do mesmo pagador (mesma moeda, valor igual, data ±2 dias), não contra a moeda da compra; só linhas sem correspondência aparecem como candidatas. Para a comparação contam também os lançamentos pendentes e os da fila local, para reimportar não duplicar. O usuário marca as que quer e elas entram como `pendente`, origem `extrato`, com a linha do extrato como fonte. Se o extrato informar moeda e valor originais (comum em contas multimoeda e faturas de cartão), preencher `moeda`/`valor` da compra com eles. Uma compra que saiu de dois saldos aparece em duas linhas do extrato; o app permite juntá-las num só lançamento antes de confirmar.
+
+Formatos:
+- **Wise (CSV)** — feito. Cabeçalho com `TransferWise ID`, `Date` (DD-MM-AAAA), `Amount` (com sinal, ponto decimal), `Currency` (moeda do saldo), `Exchange To`/`Exchange To Amount` (moeda e valor da compra quando houve conversão), `Merchant`, `Transaction Type` (`DEBIT`/`CREDIT`) e `Transaction Details Type` (`CARD`, `TRANSFER`, `DEPOSIT`, `CONVERSION`…). Viram candidatas só as saídas (`DEBIT` com valor negativo), exceto `CONVERSION`; `CARD` vem marcada, as demais (ex.: transferência enviada, que pode ser pagamento a alguém do grupo) desmarcadas. `Amount` já inclui a tarifa: é o desembolso.
+- **Nubank e Banco do Brasil (OFX)** — a fazer, aproveitando o importador do projeto de finanças pessoais.
+- **Nomad** — só exporta PDF; fora de escopo.
+- A fazer também: juntar duas linhas do extrato num só lançamento.
 
 **Fase 3 — Comprovante (opcional)** (pronto quando: uma foto de nota gera um lançamento pendente pré-preenchido)
 Extração de valor/moeda/data/estabelecimento por uma API de visão chamada pelo Apps Script, com chave em Script Properties. Decidir provedor e custo antes de começar. O resultado sempre entra como `pendente`; nunca confirmar automaticamente.
