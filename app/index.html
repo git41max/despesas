@@ -141,14 +141,13 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 .segmentado button[aria-pressed="true"] { background: var(--primaria); color: var(--primaria-texto); }
 .cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); padding: 4px 14px; margin-bottom: 8px; }
 .cartao h3 { font-size: 13px; color: var(--texto2); font-weight: 600; padding-top: 8px; }
-.transf { padding: 8px 0 0; }
-.transf + .transf { border-top: 1px solid var(--borda); }
-.transf-linha.cab { padding-top: 8px; }
-.cab + .transf { padding-top: 2px; }
-.transf-linha { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
-.transf-linha .v { font-variant-numeric: tabular-nums; margin-left: auto; }
-.transf-acoes { display: flex; gap: 20px; }
-.transf-acoes button { background: transparent; border: 0; padding: 0; color: var(--primaria); font-size: 14px; }
+/* Uma linha por dívida; cada valor é um botão que abre o pagamento já preenchido. */
+.divida { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 56px; padding: 6px 0; cursor: pointer; }
+.divida + .divida { border-top: 1px solid var(--borda); }
+.divida-nomes { flex: 1 0 auto; max-width: 100%; font-weight: 600; }
+.divida-valores { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.pilula { border-radius: 999px; padding: 0 10px 0 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pilula::after { content: "›"; margin-left: 8px; color: var(--texto2); }
 .saldos { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
 .saldos th, .saldos td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--borda); }
 .saldos th:first-child, .saldos td:first-child { text-align: left; }
@@ -228,11 +227,15 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
   max-width: calc(100% - 32px); z-index: 10; opacity: 0; pointer-events: none; transition: opacity .2s;
 }
 #toast.visivel { opacity: 1; }
+#toast.visivel.com-acao { pointer-events: auto; }
+#toast.com-acao { display: flex; width: max-content; white-space: nowrap; align-items: center; gap: 12px; padding: 4px 4px 4px 16px; }
+.toast-acao { background: transparent; border: 0; color: inherit; font-weight: 700; text-decoration: underline; padding: 0 12px; }
 </style>
 </head>
 <body>
 <div id="raiz"></div>
 <dialog id="dlg"><form id="dlgForm" class="dlg" novalidate></form></dialog>
+<dialog id="dlg2"><form id="dlg2Form" class="dlg" novalidate></form></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -241,7 +244,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.1.0';
+const VERSAO = '1.2.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -425,10 +428,11 @@ function uuid() {
   return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
 }
 
-function hoje() {
-  const d = new Date();
+function isoData(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
+function hoje() { return isoData(new Date()); }
+function ontem() { const d = new Date(); d.setDate(d.getDate() - 1); return isoData(d); }
 
 // ---------------------------------------------------------------------------
 // Dados derivados (servidor + fila local)
@@ -520,7 +524,7 @@ async function lerResposta(r) {
   }
 }
 
-function enfileirar(acao, dados) {
+function enfileirar(acao, dados, adiarMs) {
   const id = dados.id;
   // Se o lançamento ainda não chegou ao servidor, corrige a criação em vez de empilhar.
   const criacao = fila.find((it) => it.acao === 'criar' && it.dados.id === id && it.uid !== emVoo);
@@ -530,11 +534,14 @@ function enfileirar(acao, dados) {
   } else if (criacao && acao === 'excluir') {
     fila = fila.filter((it) => !(it.dados.id === id && it.uid !== emVoo));
   } else {
-    fila.push({ uid: uuid(), acao: acao, dados: dados, em: new Date().toISOString() });
+    const item = { uid: uuid(), acao: acao, dados: dados, em: new Date().toISOString() };
+    if (adiarMs) item.ate = Date.now() + adiarMs; // só envia depois disso (janela do "Desfazer")
+    fila.push(item);
   }
   gravar(LS.fila, fila);
   render();
   atualizar();
+  if (adiarMs) setTimeout(atualizar, adiarMs + 200);
 }
 
 let sincronizando = null;
@@ -554,7 +561,7 @@ function atualizar() {
 
 async function sincronizar() {
   for (;;) {
-    const item = fila.find((it) => !it.erro);
+    const item = fila.find((it) => !it.erro && !(it.ate > Date.now()));
     if (!item) return;
     rede = 'sincronizando';
     render();
@@ -620,12 +627,32 @@ const $ = (sel, raiz) => (raiz || document).querySelector(sel);
 const $$ = (sel, raiz) => Array.from((raiz || document).querySelectorAll(sel));
 
 let toastTimer = null;
-function toast(msg) {
+function toast(msg, acao, aoAgir) {
   const t = $('#toast');
-  t.textContent = msg;
+  t.innerHTML = '<span>' + esc(msg) + '</span>' + (acao ? '<button type="button" class="toast-acao">' + esc(acao) + '</button>' : '');
+  t.classList.toggle('com-acao', !!acao);
+  if (acao) $('.toast-acao', t).onclick = () => { t.classList.remove('visivel'); aoAgir(); };
   t.classList.add('visivel');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('visivel'), 2500);
+  toastTimer = setTimeout(() => t.classList.remove('visivel'), acao ? DESFAZER_MS : 2500);
+}
+const DESFAZER_MS = 5000;
+
+function quando(ts) {
+  const d = new Date(ts);
+  if (!ts || isNaN(d)) return '';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' às ' +
+    d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+/** Quem criou e quem editou, ao abrir um lançamento existente. */
+function autoriaHtml(l) {
+  if (!l) return '';
+  const partes = [];
+  if (l.criado_por) partes.push('Criado por ' + l.criado_por + (quando(l.criado_em) ? ' em ' + quando(l.criado_em) : ''));
+  if (l.editado_por) partes.push('editado por ' + l.editado_por + (quando(l.editado_em) ? ' em ' + quando(l.editado_em) : ''));
+  if (l.origem && l.origem !== 'manual') partes.push('origem: ' + l.origem);
+  if (l._local) partes.push('ainda não sincronizado');
+  return partes.length ? '<p class="dica">' + esc(maiuscula(partes.join(' · '))) + '</p>' : '';
 }
 
 function dataCurta(iso) {
@@ -642,10 +669,44 @@ function dataCurta(iso) {
   return maiuscula(dt.toLocaleDateString('pt-BR', opc).replace('-feira', ''));
 }
 
+const NOVA_MOEDA = '__nova';
 function opcoesMoeda(selecionada) {
   return moedas().map((m) =>
     '<option value="' + esc(m.moeda) + '"' + (m.moeda === selecionada ? ' selected' : '') + '>' +
-    esc(rotuloMoeda(m.moeda)) + '</option>').join('');
+    esc(rotuloMoeda(m.moeda)) + '</option>').join('') +
+    '<option value="' + NOVA_MOEDA + '">+ Nova moeda…</option>';
+}
+
+/** Data como chips Hoje / Ontem / Outra data; o campo de data só aparece em "Outra data". */
+function campoData(valor) {
+  const h = hoje(), o = ontem();
+  const sel = valor === h ? h : valor === o ? o : 'outra';
+  return '<div class="campo"><span class="rotulo">Data</span>' +
+    chips('data', [h, o, 'outra'], [sel], false, ['Hoje', 'Ontem', 'Outra data']) +
+    '<input type="date" id="cData" aria-label="Data" value="' + esc(valor) + '"' + (sel === 'outra' ? '' : ' class="oculto"') + '></div>';
+}
+function ligarData() {
+  const grupo = $('.chips[data-grupo="data"]', dlgForm);
+  grupo.dataset.obrigatorio = '1';
+  grupo.addEventListener('change', () => {
+    const inp = $('#cData', dlgForm);
+    const outra = lerChips(dlgForm, 'data')[0] === 'outra';
+    inp.classList.toggle('oculto', !outra);
+    if (outra) { try { inp.showPicker(); } catch (e) { inp.focus(); } }
+  });
+}
+function lerData() {
+  const v = lerChips(dlgForm, 'data')[0];
+  const data = v === 'outra' ? $('#cData', dlgForm).value : v;
+  if (!data) throw new Error('Informe a data');
+  return data;
+}
+
+/** Alternador do registro de pagamento: mesma moeda (pagamento) ou outra moeda (acerto cruzado). */
+function alternadorPagamento(outra) {
+  return '<div class="segmentado" role="group" aria-label="Moeda do pagamento">' +
+    '<button type="button" data-tipo-pag="mesma" aria-pressed="' + !outra + '">Mesma moeda</button>' +
+    '<button type="button" data-tipo-pag="outra" aria-pressed="' + outra + '">Outra moeda</button></div>';
 }
 
 /** Colunas da grade de chips: linhas cheias sempre que possível (4 itens = 2×2). */
@@ -691,6 +752,26 @@ function abrirDialogo(titulo, corpo, aoSalvar) {
   dlg.scrollTop = 0;
 }
 function fecharDialogo() { if (dlg.open) dlg.close(); }
+
+// "+ Nova moeda…" em qualquer seletor de moeda: cadastra por cima do formulário e já seleciona.
+dlgForm.addEventListener('focusin', (ev) => {
+  const s = ev.target;
+  if (s.tagName === 'SELECT' && s.value !== NOVA_MOEDA) s.dataset.anterior = s.value;
+});
+dlgForm.addEventListener('change', (ev) => {
+  const sel = ev.target;
+  if (sel.tagName !== 'SELECT') return;
+  if (sel.value !== NOVA_MOEDA) { sel.dataset.anterior = sel.value; return; }
+  ev.stopPropagation(); // fase de captura: os ouvintes do próprio seletor não veem "__nova"
+  sel.value = sel.dataset.anterior || sel.options[0].value;
+  abrirMoeda((codigo) => {
+    $$('select', dlgForm).filter((s) => s.querySelector('option[value="' + NOVA_MOEDA + '"]')).forEach((s) => {
+      s.innerHTML = opcoesMoeda(s === sel ? codigo : s.value);
+    });
+    sel.dataset.anterior = codigo;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}, true);
 
 dlg.addEventListener('click', (ev) => {
   if (ev.target === dlg) { fecharDialogo(); return; } // toque no fundo
@@ -740,13 +821,15 @@ function abrirDespesa(l) {
     '<div class="campo"><span class="rotulo">Dividir entre <button type="button" class="link link-dir" data-todos>todos</button></span>' +
       chips('participantes', nomes, lista(d.participantes), true) + '</div>' +
     '<div class="campo"><button type="button" class="link" style="justify-self:start" id="fPesosBtn"></button><div id="fPesos" class="pesos oculto"></div></div>' +
-    '<label class="campo"><span>Data</span><input type="date" id="fData" value="' + esc(d.data) + '"></label>' +
+    campoData(d.data) +
     '<div class="campo"><span class="rotulo">Categoria (opcional)</span>' + chips('categoria', CATEGORIAS, [d.categoria], false, CATEGORIAS.map(maiuscula)) + '</div>' +
+    autoriaHtml(l) +
     '<p class="erro" data-erro role="alert"></p>' +
     '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
     salvar);
 
   $('.chips[data-grupo="pagador"]', dlgForm).dataset.obrigatorio = '1';
+  ligarData();
   const fValor = $('#fValor'), fMoeda = $('#fMoeda'), fPagoCom = $('#fPagoCom'), fFontes = $('#fFontes');
   if (!editando) fValor.focus();
   fValor.addEventListener('keydown', (ev) => {
@@ -912,8 +995,7 @@ function abrirDespesa(l) {
       if (!igualCompra) textoFontes = lidas.map((f) => f.moeda + ':' + f.valor).join(';');
     }
 
-    const data = $('#fData').value;
-    if (!data) throw new Error('Informe a data');
+    const data = lerData();
     const dados = {
       id: l ? l.id : uuid(),
       tipo: 'despesa',
@@ -938,11 +1020,24 @@ function abrirDespesa(l) {
   }
 }
 
+/** Exclui sem pedir confirmação; a exclusão espera alguns segundos na fila para poder ser desfeita. */
 function excluirLancamento(l) {
-  if (!confirm('Excluir este lançamento?')) return;
   fecharDialogo();
-  enfileirar('excluir', { id: l.id });
-  toast('Lançamento excluído');
+  const antes = fila.slice();
+  enfileirar('excluir', { id: l.id }, DESFAZER_MS);
+  const item = fila.find((it) => antes.indexOf(it) < 0);   // a exclusão enfileirada (se houver)
+  const removidos = antes.filter((it) => fila.indexOf(it) < 0); // criação local descartada junto
+  toast('Lançamento excluído', 'Desfazer', () => {
+    if (item && (fila.indexOf(item) < 0 || emVoo === item.uid)) {
+      toast('Já sincronizado; não dá mais para desfazer');
+      return;
+    }
+    fila = fila.filter((it) => it !== item).concat(removidos)
+      .sort((a, b) => (a.em < b.em ? -1 : a.em > b.em ? 1 : 0));
+    gravar(LS.fila, fila);
+    render();
+    atualizar();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -959,15 +1054,16 @@ function abrirPagamento(l, pre) {
   if (l && l.status === 'pendente') acoes += '<button type="button" data-confirmar>Confirmar</button>';
 
   abrirDialogo(editando ? 'Editar pagamento' : 'Registrar pagamento',
+    (editando ? '' : alternadorPagamento(false)) +
     '<div class="campo"><span class="rotulo">Quem pagou</span>' + chips('de', nomes, [d.de], false) + '</div>' +
     '<div class="campo"><span class="rotulo">Para quem</span>' + chips('para', nomes, [d.para], false) + '</div>' +
     '<div class="campo-valor">' +
       '<input id="pValor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor" value="' + esc(paraInput(d.valor, d.moeda)) + '">' +
       '<select id="pMoeda" aria-label="Moeda">' + opcoesMoeda(d.moeda) + '</select>' +
     '</div>' +
-    (editando ? '' : '<button type="button" class="link" style="justify-self:start" data-cruzado>Pagar em outra moeda →</button>') +
-    '<label class="campo"><span>Data</span><input type="date" id="pData" value="' + esc(d.data) + '"></label>' +
+    campoData(d.data) +
     '<label class="campo"><span>Descrição (opcional)</span><input id="pDesc" autocomplete="off" value="' + esc(d.descricao) + '"></label>' +
+    autoriaHtml(l) +
     '<p class="erro" data-erro role="alert"></p>' +
     '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
     salvar);
@@ -977,12 +1073,16 @@ function abrirPagamento(l, pre) {
   if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
   const btnConfirmar = $('[data-confirmar]', dlgForm);
   if (btnConfirmar) btnConfirmar.onclick = () => { enfileirar('confirmar', { ids: [l.id] }); fecharDialogo(); };
-  const btnCruzado = $('[data-cruzado]', dlgForm);
-  if (btnCruzado) {
-    btnCruzado.onclick = () => {
+  ligarData();
+  const btnOutra = $('[data-tipo-pag="outra"]', dlgForm);
+  if (btnOutra) {
+    btnOutra.onclick = () => {
       let v = '';
       try { v = parseValor($('#pValor').value, casas($('#pMoeda').value)) || ''; } catch (e) { /* ignora */ }
-      abrirAcerto(null, { de: lerChips(dlgForm, 'de')[0], para: lerChips(dlgForm, 'para')[0], moeda: $('#pMoeda').value, valor: v });
+      let data = hoje();
+      try { data = lerData(); } catch (e) { /* ignora */ }
+      abrirAcerto(null, { de: lerChips(dlgForm, 'de')[0], para: lerChips(dlgForm, 'para')[0], moeda: $('#pMoeda').value, valor: v,
+        data: data, descricao: $('#pDesc').value });
     };
   }
 
@@ -994,7 +1094,7 @@ function abrirPagamento(l, pre) {
     const valor = parseValor($('#pValor').value, casas(moeda));
     if (!valor) throw new Error('Informe o valor');
     const dados = {
-      id: l ? l.id : uuid(), tipo: 'pagamento', data: $('#pData').value || hoje(),
+      id: l ? l.id : uuid(), tipo: 'pagamento', data: lerData(),
       descricao: $('#pDesc').value.trim(), categoria: '', moeda: moeda, valor: valor, fontes: '',
       pagador: de, participantes: para, pesos: '', moeda_paga: '', valor_pago: '',
       status: l ? l.status : 'confirmado', origem: l ? l.origem : 'manual',
@@ -1031,7 +1131,8 @@ function abrirAcerto(l, pre) {
   if (editando) acoes += '<button type="button" class="perigo" data-excluir>Excluir</button>';
   if (l && l.status === 'pendente') acoes += '<button type="button" data-confirmar>Confirmar</button>';
 
-  abrirDialogo(editando ? 'Editar acerto em outra moeda' : 'Pagar em outra moeda',
+  abrirDialogo(editando ? 'Editar acerto em outra moeda' : 'Registrar pagamento',
+    (editando ? '' : alternadorPagamento(true)) +
     '<div class="campo"><span class="rotulo">Quem paga</span>' + chips('de', nomes, [d.de], false) + '</div>' +
     '<div class="campo"><span class="rotulo">Quem recebe</span>' + chips('para', nomes, [d.para], false) + '</div>' +
     '<div class="grade2">' +
@@ -1047,13 +1148,26 @@ function abrirAcerto(l, pre) {
     '<label class="campo"><span id="aRotCot">Cotação</span><input id="aCot" data-campo="cotacao" inputmode="decimal" autocomplete="off"></label>' +
     '<p class="alerta" id="aAlerta"></p>' +
     '<div class="resumo-acerto" id="aResumo"></div>' +
-    '<label class="campo"><span>Data</span><input type="date" id="aData" value="' + esc(d.data) + '"></label>' +
+    campoData(d.data) +
     '<label class="campo"><span>Descrição (opcional)</span><input id="aDesc" autocomplete="off" value="' + esc(d.descricao) + '"></label>' +
+    autoriaHtml(l) +
     '<p class="erro" data-erro role="alert"></p>' +
     '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
     salvar);
 
   $$('.chips', dlgForm).forEach((c) => { c.dataset.obrigatorio = '1'; });
+  ligarData();
+  const btnMesma = $('[data-tipo-pag="mesma"]', dlgForm);
+  if (btnMesma) {
+    btnMesma.onclick = () => {
+      let v = '';
+      try { v = parseValor(campos.quitado.value, casas(aMoeda.value)) || ''; } catch (e) { /* ignora */ }
+      let data = hoje();
+      try { data = lerData(); } catch (e) { /* ignora */ }
+      abrirPagamento(null, { de: lerChips(dlgForm, 'de')[0], para: lerChips(dlgForm, 'para')[0], moeda: aMoeda.value, valor: v,
+        data: data, descricao: $('#aDesc').value });
+    };
+  }
   const campos = { quitado: $('#aQuitado'), pago: $('#aPago'), cotacao: $('#aCot') };
   const aMoeda = $('#aMoeda'), aMoedaPaga = $('#aMoedaPaga');
   let calculado = null;
@@ -1132,7 +1246,7 @@ function abrirAcerto(l, pre) {
     if (r.md === r.mp) throw new Error('A moeda paga deve ser diferente da moeda da dívida (use "Registrar pagamento")');
     if (!r.quitado || !r.pago) throw new Error('Preencha dois dos três campos (valor quitado, valor pago, cotação)');
     const dados = {
-      id: l ? l.id : uuid(), tipo: 'acerto_cruzado', data: $('#aData').value || hoje(),
+      id: l ? l.id : uuid(), tipo: 'acerto_cruzado', data: lerData(),
       descricao: $('#aDesc').value.trim(), categoria: '', moeda: r.md, valor: r.quitado, fontes: '',
       pagador: de, participantes: para, pesos: '', moeda_paga: r.mp, valor_pago: r.pago,
       status: l ? l.status : 'confirmado', origem: l ? l.origem : 'manual',
@@ -1155,8 +1269,17 @@ const MOEDAS_CONHECIDAS = {
   PLN: [2, 'zł'], ISK: [0, 'kr'], MAD: [2, 'DH'], EGP: [2, 'E£'], AED: [2, 'AED'], ILS: [2, '₪'],
 };
 
-function abrirMoeda() {
-  abrirDialogo('Cadastrar moeda',
+const dlg2 = $('#dlg2');
+const dlg2Form = $('#dlg2Form');
+dlg2.addEventListener('click', (ev) => {
+  if (ev.target === dlg2 || ev.target.closest('[data-fechar]')) dlg2.close();
+});
+
+/** Cadastro de moeda num segundo diálogo, por cima do formulário aberto. */
+function abrirMoeda(aoCadastrar) {
+  dlg2Form.innerHTML =
+    '<div class="dlg-topo"><h2>Nova moeda</h2>' +
+    '<button type="button" class="fechar" data-fechar aria-label="Fechar">×</button></div>' +
     '<label class="campo"><span>Código ISO 4217 (3 letras)</span><input id="mCod" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="Ex.: GBP"></label>' +
     '<div class="grade2">' +
       '<label class="campo"><span>Casas decimais</span><select id="mCasas">' +
@@ -1165,21 +1288,28 @@ function abrirMoeda() {
     '</div>' +
     '<p class="dica">Ex.: BRL, USD e EUR têm 2 casas; JPY e CLP têm 0.</p>' +
     '<p class="erro" data-erro role="alert"></p>' +
-    '<div class="dlg-acoes"><button type="submit" class="primario">Cadastrar</button></div>',
-    () => {
-      const moeda = $('#mCod').value.trim().toUpperCase();
+    '<div class="dlg-acoes"><button type="submit" class="primario">Cadastrar</button></div>';
+  dlg2Form.onsubmit = (ev) => {
+    ev.preventDefault();
+    try {
+      const moeda = $('#mCod', dlg2Form).value.trim().toUpperCase();
       if (!/^[A-Z]{3}$/.test(moeda)) throw new Error('Use o código de 3 letras (ex.: GBP)');
       if (moedas().some((m) => m.moeda === moeda)) throw new Error(moeda + ' já está cadastrada');
-      const dados = { moeda: moeda, casas_decimais: Number($('#mCasas').value), simbolo: $('#mSimb').value.trim() || moeda };
-      fecharDialogo();
+      const dados = { moeda: moeda, casas_decimais: Number($('#mCasas', dlg2Form).value), simbolo: $('#mSimb', dlg2Form).value.trim() || moeda };
+      dlg2.close();
       enfileirar('moeda', dados);
       toast(moeda + ' cadastrada');
-    });
-  const cod = $('#mCod');
+      if (aoCadastrar) aoCadastrar(moeda);
+    } catch (e) {
+      $('.erro[data-erro]', dlg2Form).textContent = e.message;
+    }
+  };
+  dlg2.showModal();
+  const cod = $('#mCod', dlg2Form);
   cod.focus();
   cod.addEventListener('input', () => {
     const k = MOEDAS_CONHECIDAS[cod.value.trim().toUpperCase()];
-    if (k) { $('#mCasas').value = String(k[0]); $('#mSimb').value = k[1]; }
+    if (k) { $('#mCasas', dlg2Form).value = String(k[0]); $('#mSimb', dlg2Form).value = k[1]; }
   });
 }
 
@@ -1190,7 +1320,6 @@ function abrirMenu() {
   abrirDialogo('Menu',
     '<div class="menu">' +
       '<button type="button" data-m="pagamento">Registrar pagamento</button>' +
-      '<button type="button" data-m="moeda">Cadastrar moeda</button>' +
       '<button type="button" data-m="nome">Trocar meu nome (' + esc(eu()) + ')</button>' +
     '</div>' +
     '<p class="dica">Versão ' + VERSAO + '</p>');
@@ -1199,7 +1328,6 @@ function abrirMenu() {
     if (!b) return;
     const m = b.dataset.m;
     if (m === 'pagamento') abrirPagamento();
-    else if (m === 'moeda') abrirMoeda();
     else if (m === 'nome') { fecharDialogo(); gravar(LS.eu, ''); render(); }
   };
 }
@@ -1217,7 +1345,7 @@ function abrirFila() {
   abrirDialogo('Não sincronizados',
     (fila.length ? '<div class="menu" id="filaLista">' + fila.map((it) =>
       '<div class="fila-item"><div>' + esc(descreverItemFila(it)) + '</div>' +
-      (it.erro ? '<p class="erro">' + esc(it.erro) + '</p><div class="transf-acoes">' +
+      (it.erro ? '<p class="erro">' + esc(it.erro) + '</p><div class="grade2" style="margin-top:6px">' +
         '<button type="button" data-tentar="' + esc(it.uid) + '">Tentar de novo</button>' +
         '<button type="button" class="perigo" data-descartar="' + esc(it.uid) + '">Descartar</button></div>'
         : '<p class="dica">Aguardando conexão</p>') +
@@ -1349,16 +1477,12 @@ function renderLista() {
   return html + '</div>';
 }
 
-/** Uma transferência sugerida, com as duas ações. `rotulo` vazio = só o valor. */
-function transfHtml(t, moeda, rotulo) {
-  const dados = esc(JSON.stringify({ de: t.de, para: t.para, moeda: moeda, valor: t.valor }));
-  return '<div class="transf">' +
-    '<div class="transf-linha">' + (rotulo ? '<span>' + esc(rotulo) + '</span>' : '') +
-    '<span class="v">' + esc(dinheiro(t.valor, moeda)) + '</span></div>' +
-    '<div class="transf-acoes">' +
-      '<button type="button" data-pagar="' + dados + '">Registrar pagamento</button>' +
-      '<button type="button" data-cruzar="' + dados + '">Pagar em outra moeda</button>' +
-    '</div></div>';
+/** Uma dívida: nomes à esquerda e um botão por moeda, que abre o pagamento já preenchido. */
+function dividaHtml(de, para, valores) {
+  return '<div class="divida"><span class="divida-nomes">' + esc(deve(de, para)) + '</span><span class="divida-valores">' +
+    Object.keys(valores).map((m) => '<button type="button" class="pilula" data-pagar="' +
+      esc(JSON.stringify({ de: de, para: para, moeda: m, valor: valores[m] })) + '">' + esc(dinheiro(valores[m], m)) + '</button>').join('') +
+    '</span></div>';
 }
 
 function deve(de, para) { return de + ' deve a ' + para; }
@@ -1370,21 +1494,16 @@ function renderAcerto() {
   const visao = comDivida.length > 1 ? ler(LS.visao, 'moeda') : 'moeda';
   let html = '';
   if (visao === 'par') {
-    (estado.por_par || []).forEach((p) => {
-      const ms = Object.keys(p.valores);
-      html += '<div class="cartao">' + (ms.length === 1
-        ? transfHtml({ de: p.de, para: p.para, valor: p.valores[ms[0]] }, ms[0], deve(p.de, p.para))
-        : '<div class="transf-linha cab">' + esc(deve(p.de, p.para)) + '</div>' +
-          ms.map((m) => transfHtml({ de: p.de, para: p.para, valor: p.valores[m] }, m, '')).join('')) +
-        '</div>';
-    });
+    const pares = estado.por_par || [];
+    if (pares.length) html = '<div class="cartao">' + pares.map((p) => dividaHtml(p.de, p.para, p.valores)).join('') + '</div>';
   } else {
     comDivida.forEach((m) => {
       html += '<div class="cartao">' + (comDivida.length > 1 ? '<h3>Em ' + esc(rotuloMoeda(m)) + '</h3>' : '') +
-        tpm[m].map((t) => transfHtml(t, m, deve(t.de, t.para))).join('') + '</div>';
+        tpm[m].map((t) => dividaHtml(t.de, t.para, { [m]: t.valor })).join('') + '</div>';
     });
   }
-  if (!html) html = '<p class="vazio">Ninguém deve nada a ninguém.</p>';
+  html = html ? '<p class="dica">Toque numa dívida para registrar o pagamento.</p>' + html
+    : '<p class="vazio">Ninguém deve nada a ninguém.</p>';
 
   const spm = estado.saldos_por_moeda || {};
   const ms = Object.keys(spm);
@@ -1461,10 +1580,14 @@ raiz.addEventListener('click', (ev) => {
   if (t.closest('#seloPend')) { filtroPendentes = !filtroPendentes; return render(); }
   const visao = t.closest('[data-visao]');
   if (visao) { gravar(LS.visao, visao.dataset.visao); return render(); }
-  const pagar = t.closest('[data-pagar]');
-  if (pagar) return abrirPagamento(null, JSON.parse(pagar.dataset.pagar));
-  const cruzar = t.closest('[data-cruzar]');
-  if (cruzar) return abrirAcerto(null, JSON.parse(cruzar.dataset.cruzar));
+  const divida = t.closest('.divida');
+  if (divida) {
+    // Toque no valor abre aquela moeda; toque na linha abre se a dívida tiver uma moeda só.
+    const valores = $$('[data-pagar]', divida);
+    const alvo = t.closest('[data-pagar]') || (valores.length === 1 ? valores[0] : null);
+    if (alvo) abrirPagamento(null, JSON.parse(alvo.dataset.pagar));
+    return;
+  }
   const item = t.closest('.item');
   if (item) {
     const l = lancamentosVisiveis().find((x) => x.id === item.dataset.id);
