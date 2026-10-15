@@ -3,3 +3,7 @@ gas/.clasp.json
 .clasprc.json
 node_modules/
 .DS_Store
+
+# extratos bancários nunca entram no repositório
+*.csv
+*.ofx

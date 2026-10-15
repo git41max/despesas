@@ -213,6 +213,18 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .dlg-acoes .primario { flex: 1; min-height: 50px; font-size: 17px; }
 .menu { display: grid; gap: 8px; }
 .menu button { text-align: left; }
+/* Importar extrato / confirmar pendentes */
+.arquivo { position: relative; display: flex; align-items: center; justify-content: center; min-height: 50px; border: 1px dashed var(--borda); border-radius: 12px; color: var(--primaria); font-weight: 600; }
+.arquivo input { position: absolute; inset: 0; opacity: 0; width: 100%; min-height: 0; height: 100%; padding: 0; cursor: pointer; }
+.cands { background: var(--superficie2); border-radius: 12px; overflow: hidden; }
+.cand { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; }
+.cand + .cand { border-top: 1px solid var(--borda); }
+.cand input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; padding: 0; flex: none; accent-color: var(--primaria); }
+.cand-txt { flex: 1; min-width: 0; }
+.cand-txt b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cand small { display: block; color: var(--texto2); font-size: 13px; }
+.cand-v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.largo { width: 100%; margin-bottom: 6px; }
 .fila-item { border: 1px solid var(--borda); border-radius: 12px; padding: 8px 10px; font-size: 14px; }
 .fila-item .erro { margin-top: 4px; }
 
@@ -244,7 +256,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.2.0';
+const VERSAO = '1.3.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -392,6 +404,143 @@ function textoParaQuem(pagador, parts, todos, pesosTxt) {
   const dif = parts.filter((n) => pesos[n] != null && pesos[n] !== 1).map((n) => n + ' ×' + pesos[n]);
   return txt + (dif.length ? ' (' + dif.join(', ') + ')' : '');
 }
+
+// --- Importar extrato (o arquivo é lido só no aparelho) ---
+
+/** CSV separado por vírgula -> linhas de células. Aceita BOM, CRLF, aspas e "" escapado. */
+function lerCSV(texto) {
+  const t = String(texto || '').replace(/^﻿/, '');
+  const linhas = [];
+  let linha = [], cel = '', aspas = false;
+  const fecharLinha = () => {
+    linha.push(cel);
+    if (linha.length > 1 || linha[0] !== '') linhas.push(linha);
+    linha = [];
+    cel = '';
+  };
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c !== '"') cel += c;
+      else if (t[i + 1] === '"') { cel += '"'; i++; }
+      else aspas = false;
+    } else if (c === '"') aspas = true;
+    else if (c === ',') { linha.push(cel); cel = ''; }
+    else if (c === '\r' || c === '\n') {
+      if (c === '\r' && t[i + 1] === '\n') i++;
+      fecharLinha();
+    } else cel += c;
+  }
+  if (cel !== '' || linha.length) fecharLinha();
+  return linhas;
+}
+
+/** "-2.95" (ponto decimal, sem milhar) -> 295 com 2 casas, sem sinal; excesso de casas arredonda meio-para-cima. */
+function decimalPonto(texto, casas) {
+  const m = /^\s*[-+]?(\d+)(?:\.(\d+))?\s*$/.exec(String(texto == null ? '' : texto));
+  if (!m) return null;
+  const frac = m[2] || '';
+  let n = Number(m[1]) * p10(casas) + Number((frac + '0'.repeat(casas)).slice(0, casas) || '0');
+  if (frac.length > casas && Number(frac[casas]) >= 5) n += 1;
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** "08-03-2025" (DD-MM-AAAA) -> "2025-03-08"; '' se não reconhecer. */
+function dataDMA(texto) {
+  const m = /^(\d{2})[-/.](\d{2})[-/.](\d{4})$/.exec(String(texto || '').trim());
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+
+/**
+ * Extrato CSV da Wise -> { origem, saidas, ignoradas }. Só saídas de dinheiro viram candidatas:
+ * entradas (depósitos, estornos) e conversões entre saldos ficam de fora.
+ * Cada saída: { ref, data, descricao, moeda, valor (a compra), moedaSaldo, valorSaldo (o desembolso), detalhe, sugerida }.
+ * Quando a Wise converteu na hora (compra em outra moeda), a compra vem de "Exchange To"/"Exchange To Amount".
+ * casasDe(codigo) informa as casas decimais de cada moeda.
+ */
+function lerExtratoWise(texto, casasDe) {
+  const linhas = lerCSV(texto);
+  if (!linhas.length) throw new Error('Arquivo vazio');
+  const cab = linhas[0].map((s) => s.trim());
+  if (['TransferWise ID', 'Date', 'Amount', 'Currency'].some((n) => cab.indexOf(n) < 0)) {
+    throw new Error('Formato não reconhecido. Por enquanto o app lê o extrato CSV da Wise.');
+  }
+  const campo = (l, nome) => { const i = cab.indexOf(nome); return i < 0 ? '' : String(l[i] || '').trim(); };
+  const vistos = {};
+  const saidas = [];
+  let ignoradas = 0;
+  linhas.slice(1).forEach((l) => {
+    const id = campo(l, 'TransferWise ID');
+    if (!id || vistos[id]) return;
+    vistos[id] = true;
+    const valorTxt = campo(l, 'Amount');
+    const tipo = campo(l, 'Transaction Type') || (valorTxt.charAt(0) === '-' ? 'DEBIT' : 'CREDIT');
+    const detalhe = campo(l, 'Transaction Details Type');
+    const moedaSaldo = campo(l, 'Currency').toUpperCase();
+    const valorSaldo = decimalPonto(valorTxt, casasDe(moedaSaldo));
+    const data = dataDMA(campo(l, 'Date'));
+    if (tipo !== 'DEBIT' || valorTxt.charAt(0) !== '-' || detalhe === 'CONVERSION' || !valorSaldo || !data) {
+      ignoradas += 1;
+      return;
+    }
+    let moeda = moedaSaldo, valor = valorSaldo;
+    const para = campo(l, 'Exchange To').toUpperCase();
+    if (para && para !== moedaSaldo) {
+      const v = decimalPonto(campo(l, 'Exchange To Amount'), casasDe(para));
+      if (v) { moeda = para; valor = v; }
+    }
+    saidas.push({
+      ref: 'wise:' + id, data: data, descricao: campo(l, 'Merchant') || campo(l, 'Description'),
+      moeda: moeda, valor: valor, moedaSaldo: moedaSaldo, valorSaldo: valorSaldo,
+      detalhe: detalhe, sugerida: detalhe === 'CARD',
+    });
+  });
+  return { origem: 'Wise', saidas: saidas, ignoradas: ignoradas };
+}
+
+/** Desembolsos já registrados de um pagador: uma perna por fonte (ou a própria compra), pagamentos e o valor transferido nos acertos. */
+function pernasDesembolso(lancamentos, pagador) {
+  const r = [];
+  lancamentos.forEach((l) => {
+    if (l.pagador !== pagador || l.excluido) return;
+    const perna = (moeda, valor) => r.push({ id: l.id, moeda: moeda, valor: Number(valor), data: l.data });
+    if (l.tipo === 'despesa') {
+      const fs = lerFontes(l.fontes);
+      if (fs.length) fs.forEach((f) => perna(f.moeda, f.valor));
+      else perna(l.moeda, l.valor);
+    } else if (l.tipo === 'pagamento') perna(l.moeda, l.valor);
+    else if (l.tipo === 'acerto_cruzado') perna(l.moeda_paga, l.valor_pago);
+  });
+  return r;
+}
+
+function diasEntre(a, b) {
+  const utc = (s) => { const p = String(s).split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); };
+  return Math.round(Math.abs(utc(a) - utc(b)) / 864e5);
+}
+
+/**
+ * Para cada saída do extrato, o id do lançamento que já a registra (ou null).
+ * Casa pelo desembolso: mesma moeda e valor, data ±2 dias, cada perna usada uma vez só;
+ * um lançamento importado antes (mesmo id) tem prioridade, depois a data mais próxima.
+ */
+function casarExtrato(saidas, pernas) {
+  const usadas = {};
+  return saidas.map((s) => {
+    let escolha = pernas.findIndex((p, i) => !usadas[i] && p.id === s.ref);
+    if (escolha < 0) {
+      let menor = 3;
+      pernas.forEach((p, i) => {
+        if (usadas[i] || p.moeda !== s.moedaSaldo || p.valor !== s.valorSaldo) return;
+        const d = diasEntre(p.data, s.data);
+        if (d < menor) { menor = d; escolha = i; }
+      });
+    }
+    if (escolha < 0) return null;
+    usadas[escolha] = true;
+    return pernas[escolha].id;
+  });
+}
 // </utils>
 
 // ---------------------------------------------------------------------------
@@ -413,6 +562,7 @@ let fila = ler(LS.fila, []);          // operações ainda não sincronizadas
 let rede = 'ocioso';                  // ocioso | sincronizando | offline | erro
 let erroRede = '';
 let filtroPendentes = false;
+let enviados = [];                    // aceitos pelo servidor; seguem aplicados até o próximo estado chegar
 let emVoo = null;                     // uid do item da fila sendo enviado
 
 function token() { return ler(LS.token, ''); }
@@ -441,13 +591,14 @@ function participantes() { return (estado && estado.participantes) || []; }
 
 function moedas() {
   const base = ((estado && estado.moedas) || []).slice();
-  fila.forEach((it) => {
+  enviados.concat(fila).forEach((it) => {
     if (it.acao === 'moeda' && !base.some((m) => m.moeda === it.dados.moeda)) base.push(it.dados);
   });
   return base;
 }
 function infoMoeda(codigo) {
-  return moedas().find((m) => m.moeda === codigo) || { moeda: codigo, casas_decimais: 2, simbolo: codigo };
+  const k = MOEDAS_CONHECIDAS[codigo];
+  return moedas().find((m) => m.moeda === codigo) || { moeda: codigo, casas_decimais: k ? k[0] : 2, simbolo: k ? k[1] : codigo };
 }
 function casas(codigo) { return infoMoeda(codigo).casas_decimais; }
 /** Uma só forma de indicar a moeda: o símbolo; o código só quando o símbolo é ambíguo na viagem (ex.: kr). */
@@ -479,8 +630,9 @@ function ultimaMoeda() {
 function lancamentosVisiveis() {
   const mapa = new Map();
   ((estado && estado.lancamentos) || []).forEach((l) => mapa.set(l.id, Object.assign({}, l)));
-  fila.forEach((it) => {
-    const marca = { _local: true, _erro: it.erro || '' };
+  enviados.concat(fila).forEach((it) => {
+    // Itens já enviados não são mais "não sincronizados", mas o estado do servidor ainda não os trouxe.
+    const marca = enviados.indexOf(it) >= 0 ? {} : { _local: true, _erro: it.erro || '' };
     if (it.acao === 'criar' && !mapa.has(it.dados.id)) {
       mapa.set(it.dados.id, Object.assign({ criado_por: eu() }, it.dados, marca));
     } else if (it.acao === 'editar' && mapa.has(it.dados.id)) {
@@ -544,6 +696,14 @@ function enfileirar(acao, dados, adiarMs) {
   if (adiarMs) setTimeout(atualizar, adiarMs + 200);
 }
 
+/** Várias operações de uma vez (ex.: importação), com um só envio. */
+function enfileirarVarios(ops) {
+  ops.forEach((op) => fila.push({ uid: uuid(), acao: op[0], dados: op[1], em: new Date().toISOString() }));
+  gravar(LS.fila, fila);
+  render();
+  atualizar();
+}
+
 let sincronizando = null;
 function atualizar() {
   if (!sincronizando) {
@@ -578,6 +738,7 @@ async function sincronizar() {
     emVoo = null;
     if (resp.ok) {
       fila = fila.filter((it) => it.uid !== item.uid);
+      enviados.push(item);
     } else if (resp.temporario || resp.codigo === 'token_invalido') {
       rede = 'erro';
       erroRede = resp.erro;
@@ -605,6 +766,7 @@ async function buscarEstado() {
   if (resp.ok) {
     delete resp.ok;
     estado = resp;
+    enviados = [];
     gravar(LS.estado, estado);
     rede = 'ocioso';
     erroRede = '';
@@ -734,7 +896,15 @@ function marcarChips(raiz, grupo, valores) {
 const dlg = $('#dlg');
 const dlgForm = $('#dlgForm');
 
+let statusAoSalvar = null; // 'confirmado' quando o botão "Confirmar" de um pendente envia o formulário
+function enviarConfirmando() {
+  statusAoSalvar = 'confirmado';
+  if (dlgForm.requestSubmit) dlgForm.requestSubmit();
+  else dlgForm.onsubmit(new Event('submit'));
+}
+
 function abrirDialogo(titulo, corpo, aoSalvar) {
+  statusAoSalvar = null;
   dlgForm.innerHTML =
     '<div class="dlg-topo"><h2>' + esc(titulo) + '</h2>' +
     '<button type="button" class="fechar" data-fechar aria-label="Fechar">×</button></div>' + corpo;
@@ -747,6 +917,7 @@ function abrirDialogo(titulo, corpo, aoSalvar) {
       if (erro) erro.textContent = e.message;
       else toast(e.message);
     }
+    statusAoSalvar = null;
   };
   if (!dlg.open) dlg.showModal();
   dlg.scrollTop = 0;
@@ -956,7 +1127,7 @@ function abrirDespesa(l) {
   const btnExcluir = $('[data-excluir]', dlgForm);
   if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
   const btnConfirmar = $('[data-confirmar]', dlgForm);
-  if (btnConfirmar) btnConfirmar.onclick = () => { enfileirar('confirmar', { ids: [l.id] }); fecharDialogo(); };
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
 
   renderFontes();
   renderPesos();
@@ -1010,13 +1181,13 @@ function abrirDespesa(l) {
       pesos: pesos,
       moeda_paga: '',
       valor_pago: '',
-      status: l ? l.status : 'confirmado',
+      status: statusAoSalvar || (l ? l.status : 'confirmado'),
       origem: l ? l.origem : 'manual',
     };
     gravar(LS.moeda, moeda);
     fecharDialogo();
     enfileirar(editando ? 'editar' : 'criar', dados);
-    toast(editando ? 'Despesa atualizada' : 'Despesa registrada');
+    toast(statusAoSalvar ? 'Despesa confirmada' : editando ? 'Despesa atualizada' : 'Despesa registrada');
   }
 }
 
@@ -1072,7 +1243,7 @@ function abrirPagamento(l, pre) {
   const btnExcluir = $('[data-excluir]', dlgForm);
   if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
   const btnConfirmar = $('[data-confirmar]', dlgForm);
-  if (btnConfirmar) btnConfirmar.onclick = () => { enfileirar('confirmar', { ids: [l.id] }); fecharDialogo(); };
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
   ligarData();
   const btnOutra = $('[data-tipo-pag="outra"]', dlgForm);
   if (btnOutra) {
@@ -1097,7 +1268,7 @@ function abrirPagamento(l, pre) {
       id: l ? l.id : uuid(), tipo: 'pagamento', data: lerData(),
       descricao: $('#pDesc').value.trim(), categoria: '', moeda: moeda, valor: valor, fontes: '',
       pagador: de, participantes: para, pesos: '', moeda_paga: '', valor_pago: '',
-      status: l ? l.status : 'confirmado', origem: l ? l.origem : 'manual',
+      status: statusAoSalvar || (l ? l.status : 'confirmado'), origem: l ? l.origem : 'manual',
     };
     fecharDialogo();
     enfileirar(editando ? 'editar' : 'criar', dados);
@@ -1233,7 +1404,7 @@ function abrirAcerto(l, pre) {
   const btnExcluir = $('[data-excluir]', dlgForm);
   if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
   const btnConfirmar = $('[data-confirmar]', dlgForm);
-  if (btnConfirmar) btnConfirmar.onclick = () => { enfileirar('confirmar', { ids: [l.id] }); fecharDialogo(); };
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
   recalcular();
   if (!editando) (d.valor ? campos.pago : campos.quitado).focus();
 
@@ -1249,7 +1420,7 @@ function abrirAcerto(l, pre) {
       id: l ? l.id : uuid(), tipo: 'acerto_cruzado', data: lerData(),
       descricao: $('#aDesc').value.trim(), categoria: '', moeda: r.md, valor: r.quitado, fontes: '',
       pagador: de, participantes: para, pesos: '', moeda_paga: r.mp, valor_pago: r.pago,
-      status: l ? l.status : 'confirmado', origem: l ? l.origem : 'manual',
+      status: statusAoSalvar || (l ? l.status : 'confirmado'), origem: l ? l.origem : 'manual',
     };
     fecharDialogo();
     enfileirar(editando ? 'editar' : 'criar', dados);
@@ -1319,6 +1490,7 @@ function abrirMoeda(aoCadastrar) {
 function abrirMenu() {
   abrirDialogo('Menu',
     '<div class="menu">' +
+      '<button type="button" data-m="importar">Importar extrato</button>' +
       '<button type="button" data-m="pagamento">Registrar pagamento</button>' +
       '<button type="button" data-m="nome">Trocar meu nome (' + esc(eu()) + ')</button>' +
     '</div>' +
@@ -1327,9 +1499,172 @@ function abrirMenu() {
     const b = ev.target.closest('[data-m]');
     if (!b) return;
     const m = b.dataset.m;
-    if (m === 'pagamento') abrirPagamento();
+    if (m === 'importar') abrirImportar();
+    else if (m === 'pagamento') abrirPagamento();
     else if (m === 'nome') { fecharDialogo(); gravar(LS.eu, ''); render(); }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Importar extrato e confirmar pendentes
+
+function dataBr(iso) { return String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7); }
+
+/** Linha com caixa de seleção (i < 0 = sem caixa, só informativa). */
+function candHtml(i, marcado, titulo, sub, valor, valorSub) {
+  return '<label class="cand">' +
+    (i >= 0 ? '<input type="checkbox" data-i="' + i + '"' + (marcado ? ' checked' : '') + '>' : '') +
+    '<span class="cand-txt"><b>' + esc(titulo) + '</b><small>' + esc(sub) + '</small></span>' +
+    '<span class="cand-v">' + esc(valor) + (valorSub ? '<small>' + esc(valorSub) + '</small>' : '') + '</span></label>';
+}
+
+function saidaHtml(s, i) {
+  return candHtml(i, s.sugerida, s.descricao || '—',
+    dataBr(s.data) + (s.detalhe && s.detalhe !== 'CARD' ? ' · ' + (s.detalhe === 'TRANSFER' ? 'transferência' : s.detalhe.toLowerCase()) : ''),
+    dinheiro(s.valor, s.moeda), s.moeda !== s.moedaSaldo ? 'pago com ' + dinheiro(s.valorSaldo, s.moedaSaldo) : '');
+}
+
+function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+
+function abrirImportar() {
+  const quem = eu();
+  const nomes = participantes();
+  let novas = [];
+  abrirDialogo('Importar extrato',
+    '<p class="dica">Por enquanto: extrato CSV da Wise. O arquivo é lido só neste aparelho; ao servidor vão apenas as compras que você marcar, como pendentes.</p>' +
+    '<label class="arquivo">Escolher arquivo<input type="file" id="iArquivo" accept=".csv,text/csv"></label>' +
+    '<div id="iResultado" class="campo"></div>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes oculto" id="iAcoes"><button type="submit" class="primario" id="iCriar">Criar pendentes</button></div>',
+    salvar);
+  const resultado = $('#iResultado'), erro = $('.erro[data-erro]', dlgForm);
+
+  $('#iArquivo').onchange = async (ev) => {
+    const arq = ev.target.files[0];
+    if (!arq) return;
+    erro.textContent = '';
+    let ext;
+    try {
+      ext = lerExtratoWise(await arq.text(), casas);
+    } catch (e) {
+      erro.textContent = e.message;
+      resultado.innerHTML = '';
+      $('#iAcoes').classList.add('oculto');
+      return;
+    } finally {
+      ev.target.value = ''; // permite escolher o mesmo arquivo de novo
+    }
+    const casados = casarExtrato(ext.saidas, pernasDesembolso(lancamentosVisiveis(), quem));
+    novas = ext.saidas.filter((s, i) => !casados[i]);
+    const ja = ext.saidas.filter((s, i) => casados[i]);
+    resultado.innerHTML =
+      '<p class="nota">' + esc(ext.origem + ': ' + plural(ext.saidas.length, 'saída', 'saídas') + ' · ' +
+        plural(novas.length, 'nova', 'novas') + ' · ' + plural(ja.length, 'já lançada', 'já lançadas') +
+        (ext.ignoradas ? ' · ' + plural(ext.ignoradas, 'entrada ou conversão ignorada', 'entradas e conversões ignoradas') : '')) + '</p>' +
+      (novas.length
+        ? '<span class="rotulo">Ainda não lançadas <button type="button" class="link link-dir" data-marcar></button></span>' +
+          '<div class="cands" id="iNovas">' + novas.map((s, i) => saidaHtml(s, i)).join('') + '</div>' +
+          '<div class="campo"><span class="rotulo">Dividir entre</span>' + chips('participantes', nomes, nomes, true) + '</div>' +
+          '<p class="dica" id="iNota"></p>'
+        : '<p class="vazio">Nenhuma compra nova: tudo já está lançado.</p>') +
+      (ja.length ? '<details><summary>Ver ' + plural(ja.length, 'já lançada', 'já lançadas') + '</summary><div class="cands">' +
+        ja.map((s) => saidaHtml(s, -1)).join('') + '</div></details>' : '');
+    $('#iAcoes').classList.toggle('oculto', !novas.length);
+    atualizarSelecao();
+  };
+
+  function selecionadas() {
+    return $$('#iNovas input[data-i]', dlgForm).filter((c) => c.checked).map((c) => novas[Number(c.dataset.i)]);
+  }
+  function moedasACadastrar(sel) {
+    const cadastradas = moedas().map((m) => m.moeda);
+    const faltam = [];
+    sel.forEach((s) => [s.moeda, s.moedaSaldo].forEach((c) => {
+      if (cadastradas.indexOf(c) < 0 && faltam.indexOf(c) < 0) faltam.push(c);
+    }));
+    return faltam;
+  }
+  function atualizarSelecao() {
+    const marcar = $('[data-marcar]', dlgForm);
+    if (!marcar) return;
+    const sel = selecionadas();
+    marcar.textContent = sel.length === novas.length ? 'desmarcar todas' : 'marcar todas';
+    $('#iCriar').textContent = sel.length ? 'Criar ' + plural(sel.length, 'pendente', 'pendentes') : 'Marque ao menos uma';
+    $('#iCriar').disabled = !sel.length;
+    const faltam = moedasACadastrar(sel);
+    $('#iNota').textContent = 'Entram como pendentes, pagas por ' + quem + '; confira e confirme depois.' +
+      (faltam.length ? ' Moeda nova a cadastrar: ' + faltam.map((c) => rotuloMoeda(c) + (rotuloMoeda(c) === c ? '' : ' (' + c + ')')).join(', ') + '.' : '');
+  }
+  resultado.addEventListener('change', atualizarSelecao);
+  resultado.addEventListener('click', (ev) => {
+    if (!ev.target.closest('[data-marcar]')) return;
+    const todas = selecionadas().length === novas.length;
+    $$('#iNovas input[data-i]', dlgForm).forEach((c) => { c.checked = !todas; });
+    atualizarSelecao();
+  });
+
+  function salvar() {
+    const sel = selecionadas();
+    if (!sel.length) throw new Error('Marque ao menos uma compra');
+    const parts = lerChips(dlgForm, 'participantes');
+    if (!parts.length) throw new Error('Escolha entre quem dividir');
+    const ops = moedasACadastrar(sel).map((c) => {
+      const m = infoMoeda(c);
+      return ['moeda', { moeda: c, casas_decimais: m.casas_decimais, simbolo: m.simbolo }];
+    });
+    sel.forEach((s) => ops.push(['criar', {
+      id: s.ref, tipo: 'despesa', data: s.data, descricao: s.descricao, categoria: '',
+      moeda: s.moeda, valor: s.valor,
+      fontes: s.moeda !== s.moedaSaldo ? s.moedaSaldo + ':' + s.valorSaldo : '', // a linha do extrato é a fonte
+      pagador: quem, participantes: parts.join(';'), pesos: '', moeda_paga: '', valor_pago: '',
+      status: 'pendente', origem: 'extrato',
+    }]));
+    fecharDialogo();
+    filtroPendentes = true;
+    enfileirarVarios(ops);
+    window.scrollTo(0, 0);
+    toast(plural(sel.length, 'pendente criada', 'pendentes criadas') + '. Confira e confirme.');
+  }
+}
+
+function abrirConfirmarPendentes() {
+  const ps = lancamentosVisiveis().filter((l) => l.status === 'pendente');
+  abrirDialogo('Confirmar pendentes',
+    '<p class="dica">Só lançamentos confirmados entram no acerto. Para ajustar participantes ou categoria, feche e toque no lançamento na lista.</p>' +
+    '<span class="rotulo">' + plural(ps.length, 'pendente', 'pendentes') + ' <button type="button" class="link link-dir" data-marcar></button></span>' +
+    '<div class="cands" id="cLista">' + ps.map((l, i) => {
+      const despesa = l.tipo === 'despesa';
+      const vs = valoresItem(l);
+      return candHtml(i, true,
+        despesa ? (l.descricao || maiuscula(l.categoria) || 'Despesa') : l.pagador + ' pagou ' + lista(l.participantes)[0],
+        dataBr(l.data) + (despesa ? ' · ' + l.pagador + ' pagou para ' + textoParaQuem(l.pagador, lista(l.participantes), participantes(), l.pesos) : ''),
+        vs.valor, '');
+    }).join('') + '</div>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes"><button type="submit" class="primario" id="cBotao">Confirmar</button></div>',
+    () => {
+      const ids = marcados().map((l) => l.id);
+      if (!ids.length) throw new Error('Marque ao menos um lançamento');
+      fecharDialogo();
+      if (ids.length === ps.length) filtroPendentes = false;
+      enfileirar('confirmar', { ids: ids });
+      toast(plural(ids.length, 'lançamento confirmado', 'lançamentos confirmados'));
+    });
+  const caixas = $$('#cLista input[data-i]', dlgForm);
+  const marcados = () => caixas.filter((c) => c.checked).map((c) => ps[Number(c.dataset.i)]);
+  const atualizarSel = () => {
+    const n = marcados().length;
+    $('[data-marcar]', dlgForm).textContent = n === ps.length ? 'desmarcar todos' : 'marcar todos';
+    $('#cBotao').textContent = n ? 'Confirmar ' + n : 'Marque ao menos um';
+    $('#cBotao').disabled = !n;
+  };
+  $('#cLista').addEventListener('change', atualizarSel);
+  $('[data-marcar]', dlgForm).onclick = () => {
+    const todos = marcados().length === ps.length;
+    caixas.forEach((c) => { c.checked = !todos; });
+    atualizarSel();
+  };
+  atualizarSel();
 }
 
 function descreverItemFila(it) {
@@ -1464,7 +1799,7 @@ function renderLista() {
   if (!ls.length) {
     return '<p class="vazio">' + (filtroPendentes ? 'Nenhum lançamento pendente.' : 'Nenhum lançamento ainda. Toque em “+ Nova despesa”.') + '</p>';
   }
-  let html = '';
+  let html = filtroPendentes ? '<button type="button" class="primario largo" id="btnLote">Confirmar pendentes</button>' : '';
   let dia = null;
   ls.forEach((l) => {
     if (l.data !== dia) {
@@ -1542,7 +1877,8 @@ function estadoSync() {
 function renderPrincipal() {
   const totais = estado.totais_por_moeda || {};
   const txtTotais = Object.keys(totais).map((m) => dinheiro(totais[m], m, { semDecimais: true })).join(' · ');
-  const pend = estado.pendentes || 0;
+  const pend = lancamentosVisiveis().filter((l) => l.status === 'pendente').length;
+  if (!pend) filtroPendentes = false;
   const sync = estadoSync();
 
   const detalhes = document.querySelector('details');
@@ -1578,6 +1914,7 @@ raiz.addEventListener('click', (ev) => {
   if (t.closest('#btnMenu')) return abrirMenu();
   if (t.closest('#btnSync')) return fila.length ? abrirFila() : atualizar();
   if (t.closest('#seloPend')) { filtroPendentes = !filtroPendentes; return render(); }
+  if (t.closest('#btnLote')) return abrirConfirmarPendentes();
   const visao = t.closest('[data-visao]');
   if (visao) { gravar(LS.visao, visao.dataset.visao); return render(); }
   const divida = t.closest('.divida');
