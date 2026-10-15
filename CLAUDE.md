@@ -155,13 +155,16 @@ Nível adequado para um grupo de amigos, não para dados sensíveis:
 
 ## Frontend
 
-Telas (seguir o protótipo): cabeçalho com totais e contador de pendentes; ações "Adicionar rapidamente", "Importar extrato", "Compartilhar comprovante"; lista de lançamentos; bloco "Acerto de contas".
+Telas: cabeçalho compacto com totais; botão flutuante "+ Nova despesa" (o "Adicionar rapidamente"); lista de lançamentos com filtro de pendentes; bloco "Acerto de contas". "Importar extrato" e "Compartilhar comprovante" entram na interface só quando as fases 2 e 3 forem implementadas (sem botões desabilitados de "em breve").
 
-- **Cabeçalho**: total desembolsado por moeda, somando as pernas (ex.: `R$ 2.480 · US$ 640 · € 95`), nunca um total convertido.
+- **Cabeçalho**: nome da viagem, indicador discreto de sincronização (ponto colorido + texto curto: hora da última atualização, "N na fila", "offline"; tocar atualiza ou abre a fila) e total desembolsado por moeda, somando as pernas (ex.: `R$ 2.480 · US$ 640 · € 95`), nunca um total convertido.
+- **Moeda na interface**: uma só forma, o símbolo (`R$`, `US$`, `€`), inclusive nos seletores e cotações (`US$ 1 = ¥ 147,06`). O código ISO aparece só quando dois símbolos cadastrados coincidem (ex.: `kr`).
 - **Adicionar rapidamente** é o caminho principal e deve exigir o mínimo de toques: valor (teclado numérico, aceitar `120,50` e `120.50`), moeda (seletor compacto ao lado do valor; padrão = última moeda usada neste aparelho), descrição, pagador (padrão: eu), participantes (padrão: todos), data (padrão: hoje), categoria opcional.
 - **"Pago com"**: linha discreta abaixo do valor, mostrando por padrão a própria moeda da compra. Tocar permite trocar a moeda de saída e informar o valor desembolsado, ou "+ completar com outro saldo" para adicionar uma segunda/terceira fonte. O caso comum continua sem nenhum toque extra.
-- **Lista de lançamentos**: despesa com fontes exibe compra e desembolso, ex.: `¥ 10.000 · pago com US$ 68,00` ou `US$ 80,00 · pago com US$ 50,00 + € 27,00`.
-- **Acerto de contas**: alternar entre visão por moeda e visão por par. Cada transferência sugerida tem duas ações: "Registrar pagamento" (mesma moeda, pré-preenchido) e "Pagar em outra moeda" (abre o fluxo de acerto cruzado).
+- **Lista de lançamentos**: agrupada por dia. Despesa: título `Descrição – Categoria` e linha `A pagou para todos` / `A pagou para B` / `A pagou para B e C`. Pagamento e acerto cruzado: `A pagou B`. Despesa com fontes exibe compra e desembolso, ex.: `¥ 10.000` com `pago com US$ 68,00` abaixo, ou `US$ 80,00` com `pago com US$ 50,00 + € 27,00`.
+- **Acerto de contas**: alternar entre visão por moeda e visão por par (o alternador só aparece quando há dívidas em mais de uma moeda). Texto das transferências: `A deve a B`, com um botão por moeda. Tocar na dívida abre "Registrar pagamento" pré-preenchido; no topo desse formulário, o alternador "Mesma moeda / Outra moeda" troca entre pagamento e acerto cruzado mantendo pessoas, valor e data.
+- **Formulários**: data como chips "Hoje / Ontem / Outra data" (o campo de data só aparece em "Outra data"); todo seletor de moeda tem "+ Nova moeda…", que abre o cadastro por cima do formulário e já seleciona a moeda criada; ao abrir um lançamento existente, mostrar quem criou/editou e quando.
+- **Excluir** não pede confirmação: o item some da lista, a exclusão espera 5 s na fila (`ate` no item da fila) e o aviso oferece "Desfazer".
 - **Pendentes** = lançamentos com `status = pendente` aguardando confirmação. A fila offline é outra coisa: mostrar à parte, como "não sincronizados".
 - Fila offline em `localStorage`; sincronizar no evento `online` e ao abrir o app. Lista de moedas e participantes em cache local.
 - Tema escuro como padrão, respeitando `prefers-color-scheme`. Layout pensado para iPhone (safe areas, alvos de toque ≥ 44px).

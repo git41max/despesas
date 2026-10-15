@@ -49,12 +49,14 @@ npx serve app                # servir o PWA localmente
 
 ## Como usar
 
-- **Adicionar rapidamente**: valor (aceita `120,50` e `120.50`), moeda (lembra a última usada),
-  descrição; pagador = você e divisão entre todos por padrão.
+- **+ Nova despesa**: valor (aceita `120,50` e `120.50`), moeda (lembra a última usada; para
+  usar uma moeda nova, escolha "+ Nova moeda…" no seletor), descrição; pagador = você, divisão
+  entre todos e data de hoje por padrão.
 - **Pago com**: quando a compra saiu de outro saldo (ex.: ¥ 10.000 pagos com US$ 68) ou de
   mais de um (US$ 50 + € 27). Só o desembolso gera dívida.
-- **Acerto de contas**: por moeda ou por par. *Registrar pagamento* quita na mesma moeda;
-  *Pagar em outra moeda* registra um acerto cruzado com a cotação combinada (preencha dois
-  de: valor quitado, valor pago, cotação).
-- **Sem internet**: os lançamentos ficam na fila do aparelho ("não sincronizados") e são
-  enviados quando a conexão volta.
+- **Acerto de contas**: por moeda ou por par. Toque numa dívida para registrar o pagamento já
+  preenchido; em *Outra moeda* ele vira um acerto cruzado com a cotação combinada (preencha
+  dois de: valor quitado, valor pago, cotação).
+- **Excluir**: o lançamento some na hora e dá para *Desfazer* por alguns segundos.
+- **Sem internet**: os lançamentos ficam na fila do aparelho e são enviados quando a conexão
+  volta; o indicador no topo mostra quantos estão na fila (toque para ver).
