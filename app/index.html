@@ -1,0 +1,2212 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Despesas">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Despesas da Viagem</title>
+<style>
+:root {
+  color-scheme: dark;
+  --fundo: #0f1115;
+  --superficie: #181b22;
+  --superficie2: #222631;
+  --borda: #2e3340;
+  --texto: #e9ecf1;
+  --texto2: #9aa3b2;
+  --primaria: #4f8cff;
+  --primaria-texto: #ffffff;
+  --positivo: #3ecf8e;
+  --negativo: #ff7070;
+  --aviso: #f5b942;
+  --raio: 14px;
+  --sombra: 0 8px 30px rgba(0, 0, 0, .45);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --fundo: #f4f5f7;
+    --superficie: #ffffff;
+    --superficie2: #eef0f4;
+    --borda: #d9dde5;
+    --texto: #161a22;
+    --texto2: #5d6676;
+    --primaria: #2563eb;
+    --positivo: #0f9d63;
+    --negativo: #d93636;
+    --aviso: #b7791f;
+    --sombra: 0 8px 30px rgba(0, 0, 0, .15);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(96px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select { font: inherit; color: inherit; }
+button {
+  min-height: 44px;
+  border: 1px solid var(--borda);
+  background: var(--superficie2);
+  border-radius: 12px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.primario { background: var(--primaria); color: var(--primaria-texto); border-color: transparent; font-weight: 600; }
+button.perigo { color: var(--negativo); }
+button.link { background: none; border: 0; color: var(--primaria); padding: 0 4px; min-height: 44px; }
+input, select {
+  min-height: 44px;
+  font-size: 17px;
+  background: var(--superficie2);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 0 12px;
+  width: 100%;
+}
+input:focus, select:focus, button:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+input.calculado { border-style: dashed; color: var(--primaria); }
+h1, h2, h3 { margin: 0; }
+.oculto { display: none !important; }
+
+/* Cabeçalho */
+.topo { padding: 6px 8px 10px 16px; position: sticky; top: 0; z-index: 2; background: var(--fundo); border-bottom: 1px solid var(--borda); }
+.topo-linha { display: flex; align-items: center; gap: 2px; }
+.topo h1 { font-size: 18px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titulo-grupo { background: none; border: 0; padding: 0; border-radius: 0; font: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.titulo-grupo span { color: var(--texto2); font-weight: 400; }
+.icone { width: 44px; padding: 0; border: 0; background: transparent; font-size: 20px; }
+.totais { font-size: 22px; font-weight: 700; padding-right: 8px; font-variant-numeric: tabular-nums; }
+/* Indicador de sincronização: ponto + texto curto; tocar atualiza (ou abre a fila). */
+.sync { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 0 8px; font-size: 13px; color: var(--texto2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sync::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--positivo); flex: none; }
+.sync.ocupado::before { background: var(--primaria); animation: pulsar .8s ease-in-out infinite alternate; }
+.sync.aviso { color: var(--aviso); }
+.sync.aviso::before { background: var(--aviso); }
+.sync.falha { color: var(--negativo); }
+.sync.falha::before { background: var(--negativo); }
+@keyframes pulsar { to { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .sync.ocupado::before { animation: none; } }
+.selo { font-size: 13px; font-weight: 600; border-radius: 999px; padding: 0 12px; min-height: 32px; border: 1px solid var(--aviso); background: transparent; color: var(--aviso); }
+.selo.ativo { background: var(--aviso); color: #111; }
+
+main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
+
+.bloco { margin-top: 22px; }
+.bloco > h2 { font-size: 17px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.bloco > h2 .espaco { flex: 1; }
+.nota { color: var(--texto2); font-size: 14px; margin: 6px 0; }
+.aviso-caixa { border: 1px solid var(--aviso); color: var(--aviso); border-radius: var(--raio); padding: 10px 12px; margin-top: 12px; font-size: 14px; }
+.aviso-caixa button { margin-top: 6px; }
+
+/* Lista: um grupo por dia, linhas separadas por filete */
+.dia { font-size: 13px; color: var(--texto2); margin: 14px 4px 6px; }
+.grupo { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
+.item {
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  width: 100%; min-height: 56px; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 9px 14px;
+}
+.item + .item { border-top: 1px solid var(--borda); }
+.item:active { background: var(--superficie2); }
+.item-linha { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+.item-titulo { flex: 1 1 0; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-cat { font-weight: 400; color: var(--texto2); }
+.item-valor { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.item-sub { color: var(--texto2); font-size: 13px; }
+.item-sub.dir { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
+.item.repasse .item-titulo { font-weight: 500; }
+.item.repasse .item-valor { color: var(--texto2); }
+.etiqueta { display: inline-block; font-size: 11px; font-weight: 600; line-height: 16px; border-radius: 999px; padding: 0 7px; border: 1px solid currentColor; vertical-align: 1px; }
+.etiqueta.pendente { color: var(--aviso); }
+.etiqueta.local { color: var(--primaria); }
+.etiqueta.erro { color: var(--negativo); }
+.vazio { text-align: center; color: var(--texto2); padding: 24px 8px; }
+
+/* Acerto */
+.segmentado { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+.segmentado button { border: 0; border-radius: 0; min-height: 40px; font-size: 15px; background: transparent; }
+.segmentado button[aria-pressed="true"] { background: var(--primaria); color: var(--primaria-texto); }
+.cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); padding: 4px 14px; margin-bottom: 8px; }
+.cartao h3 { font-size: 13px; color: var(--texto2); font-weight: 600; padding-top: 8px; }
+/* Uma linha por dívida; cada valor é um botão que abre o pagamento já preenchido. */
+.divida { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 56px; padding: 6px 0; cursor: pointer; }
+.divida + .divida { border-top: 1px solid var(--borda); }
+.divida-nomes { flex: 1 0 auto; max-width: 100%; font-weight: 600; }
+.divida-valores { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.pilula { border-radius: 999px; padding: 0 10px 0 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pilula::after { content: "›"; margin-left: 8px; color: var(--texto2); }
+.saldos { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+.saldos th, .saldos td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--borda); }
+.saldos th:first-child, .saldos td:first-child { text-align: left; }
+.pos { color: var(--positivo); }
+.neg { color: var(--negativo); }
+details summary { min-height: 44px; display: flex; align-items: center; color: var(--primaria); cursor: pointer; }
+
+/* Botão de adicionar centralizado: não cobre os valores, alinhados à direita. */
+.fab {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom));
+  min-height: 52px; padding: 0 24px; border-radius: 999px; font-size: 17px; white-space: nowrap;
+  box-shadow: var(--sombra); z-index: 3;
+}
+
+/* Diálogo (folha inferior) */
+dialog {
+  border: 0; padding: 0; color: var(--texto); background: var(--superficie);
+  width: 100%; max-width: 560px; max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+  margin: auto auto 0; border-radius: 18px 18px 0 0; box-shadow: var(--sombra);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .5); }
+@media (min-width: 600px) { dialog { margin: auto; border-radius: 18px; } }
+.dlg { padding: 14px 16px 0; display: grid; gap: 12px; }
+.dlg > :last-child { margin-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.dlg-topo { display: flex; align-items: center; gap: 8px; }
+.dlg-topo h2 { flex: 1; font-size: 18px; }
+.fechar { width: 44px; padding: 0; font-size: 22px; background: transparent; border: 0; }
+.campo { display: grid; gap: 6px; }
+.link-dir { margin-left: auto; }
+.campo > span, .rotulo { font-size: 13px; color: var(--texto2); display: flex; align-items: center; gap: 4px; }
+.campo-valor { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.campo-valor input { font-size: 32px; min-height: 60px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.campo-valor select { width: auto; min-width: 92px; min-height: 60px; font-weight: 600; }
+.pago-com { background: none; border: 0; padding: 0 2px; color: var(--texto2); text-align: left; font-size: 15px; min-height: 36px; margin-top: -6px; }
+.pago-com b { color: var(--texto); font-weight: 600; }
+.fontes { display: grid; gap: 6px; background: var(--superficie2); border-radius: 12px; padding: 10px; margin-top: -6px; }
+.fonte { display: grid; grid-template-columns: 96px 1fr 44px; gap: 6px; }
+.fonte select, .fonte input { background: var(--superficie); }
+.fonte button { padding: 0; background: transparent; border: 0; font-size: 20px; color: var(--texto2); }
+.dica { font-size: 13px; color: var(--texto2); margin: 0; }
+/* Chips em grade de colunas iguais (--cols definido em chips()). */
+.chips { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 6px; }
+.chip { border-radius: 999px; min-height: 44px; font-size: 15px; padding: 0 8px; background: var(--superficie2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip[aria-pressed="true"] { background: var(--primaria); color: var(--primaria-texto); border-color: transparent; }
+.pesos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.pesos label { display: grid; grid-template-columns: 1fr 64px; align-items: center; gap: 6px; font-size: 15px; }
+.pesos input { text-align: center; padding: 0 4px; }
+.grade2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.erro { color: var(--negativo); font-size: 14px; margin: 0; min-height: 0; }
+.erro:empty { display: none; }
+.alerta { color: var(--aviso); font-size: 14px; margin: 0; }
+.alerta:empty { display: none; }
+.resumo-acerto { background: var(--superficie2); border-radius: 12px; padding: 10px 12px; font-size: 15px; }
+.resumo-acerto:empty { display: none; }
+/* Ações fixas no rodapé da folha: "Salvar" sempre visível sem rolar. */
+.dlg-acoes {
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+  position: sticky; bottom: 0; z-index: 1; background: var(--superficie);
+  margin: 0 -16px; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--borda);
+}
+.dlg > .dlg-acoes:last-child { margin-bottom: 0; }
+.dlg-acoes .primario { flex: 1; min-height: 50px; font-size: 17px; }
+.menu { display: grid; gap: 8px; }
+.menu button { text-align: left; }
+.grupo-linha { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.grupo-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grupo-nome[aria-current="true"] { border-color: var(--primaria); }
+/* Importar extrato / confirmar pendentes */
+.arquivo { position: relative; display: flex; align-items: center; justify-content: center; min-height: 50px; border: 1px dashed var(--borda); border-radius: 12px; color: var(--primaria); font-weight: 600; }
+.arquivo input { position: absolute; inset: 0; opacity: 0; width: 100%; min-height: 0; height: 100%; padding: 0; cursor: pointer; }
+.cands { background: var(--superficie2); border-radius: 12px; overflow: hidden; }
+.cand { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; }
+.cand + .cand { border-top: 1px solid var(--borda); }
+.cand input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; padding: 0; flex: none; accent-color: var(--primaria); }
+.cand-txt { flex: 1; min-width: 0; }
+.cand-txt b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cand small { display: block; color: var(--texto2); font-size: 13px; }
+.cand-v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.largo { width: 100%; margin-bottom: 6px; }
+.fila-item { border: 1px solid var(--borda); border-radius: 12px; padding: 8px 10px; font-size: 14px; }
+.fila-item .erro { margin-top: 4px; }
+
+.tela { padding: 32px 20px; max-width: 480px; margin: 0 auto; text-align: center; }
+.tela h1 { font-size: 24px; margin-bottom: 12px; }
+.tela .lista-nomes { display: grid; gap: 8px; margin-top: 20px; }
+.tela .lista-nomes button { min-height: 52px; font-size: 18px; }
+.tela #convite { margin-top: 16px; }
+.tela #entrar { width: 100%; margin-top: 12px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: var(--texto); color: var(--fundo); padding: 10px 16px; border-radius: 12px; font-size: 15px;
+  max-width: calc(100% - 32px); z-index: 10; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+#toast.visivel { opacity: 1; }
+#toast.visivel.com-acao { pointer-events: auto; }
+#toast.com-acao { display: flex; width: max-content; white-space: nowrap; align-items: center; gap: 12px; padding: 4px 4px 4px 16px; }
+.toast-acao { background: transparent; border: 0; color: inherit; font-weight: 700; text-decoration: underline; padding: 0 12px; }
+</style>
+</head>
+<body>
+<div id="raiz"></div>
+<dialog id="dlg"><form id="dlgForm" class="dlg" novalidate></form></dialog>
+<dialog id="dlg2"><form id="dlg2Form" class="dlg" novalidate></form></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+// URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
+// Também pode vir no link de convite: #t=<token>&api=<url>
+const API_URL = '';
+const VERSAO = '1.4.0';
+
+// <utils> — funções puras, testadas em tests/app.test.js
+const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
+
+function p10(n) { let r = 1; for (let i = 0; i < n; i++) r *= 10; return r; }
+
+/** 123456 (2 casas) -> "1.234,56". semDecimais arredonda meio-para-cima. */
+function formatarNumero(valor, casas, opcoes) {
+  opcoes = opcoes || {};
+  const neg = valor < 0;
+  const abs = Math.abs(valor);
+  const base = p10(casas);
+  let inteiro, frac = '';
+  if (opcoes.semDecimais || casas === 0) {
+    inteiro = casas === 0 ? abs : Math.floor((abs + base / 2) / base);
+  } else {
+    inteiro = Math.floor(abs / base);
+    frac = String(abs % base).padStart(casas, '0');
+  }
+  const sepMilhar = opcoes.semMilhar ? '' : '.';
+  const txt = String(inteiro).replace(/\B(?=(\d{3})+(?!\d))/g, sepMilhar);
+  return (neg ? '−' : '') + txt + (frac ? ',' + frac : '');
+}
+
+function tirarMilhar(parte, sep) {
+  if (!sep || parte.indexOf(sep) < 0) return parte;
+  const g = parte.split(sep);
+  if (!/^\d{1,3}$/.test(g[0]) || g.slice(1).some((x) => !/^\d{3}$/.test(x))) throw new Error('Valor inválido');
+  return g.join('');
+}
+
+/**
+ * Texto digitado -> inteiro em unidades mínimas. Aceita "120,50", "120.50",
+ * "1.234,56", "1,234.56" e "10.000" (milhar). null se vazio; Error se inválido.
+ */
+function parseValor(texto, casas) {
+  const t = String(texto == null ? '' : texto).replace(/[\s ]/g, '');
+  if (!t) return null;
+  if (!/^[\d.,]+$/.test(t) || !/\d/.test(t)) throw new Error('Valor inválido');
+  const nP = (t.match(/\./g) || []).length;
+  const nV = (t.match(/,/g) || []).length;
+  let inteiro = t, frac = '';
+  if (nP && nV) {
+    const dec = t.lastIndexOf('.') > t.lastIndexOf(',') ? '.' : ',';
+    const i = t.lastIndexOf(dec);
+    inteiro = tirarMilhar(t.slice(0, i), dec === '.' ? ',' : '.');
+    frac = t.slice(i + 1);
+  } else if (nP + nV === 1) {
+    const sep = nP ? '.' : ',';
+    const i = t.indexOf(sep);
+    if (t.length - i - 1 === 3 && casas < 3 && i > 0) {
+      inteiro = tirarMilhar(t, sep);
+    } else {
+      inteiro = t.slice(0, i);
+      frac = t.slice(i + 1);
+    }
+  } else if (nP + nV > 1) {
+    inteiro = tirarMilhar(t, nP ? '.' : ',');
+  }
+  if (!/^\d*$/.test(inteiro) || !/^\d*$/.test(frac)) throw new Error('Valor inválido');
+  if (frac.length > casas) {
+    throw new Error(casas ? 'Use no máximo ' + casas + ' casas decimais' : 'Esta moeda não tem centavos');
+  }
+  const n = Number(inteiro || '0') * p10(casas) + Number((frac + '0'.repeat(casas)).slice(0, casas) || '0');
+  if (!Number.isSafeInteger(n)) throw new Error('Valor grande demais');
+  return n;
+}
+
+/** Cotação digitada ("0,92", "150.25") -> {n: BigInt, escala}. */
+function parseDecimal(texto) {
+  const t = String(texto == null ? '' : texto).replace(/\s/g, '');
+  if (!t) return null;
+  const m = /^(\d*)(?:[.,](\d*))?$/.exec(t);
+  if (!m || (!m[1] && !m[2])) throw new Error('Cotação inválida');
+  const n = BigInt((m[1] || '0') + (m[2] || ''));
+  if (n === BigInt(0)) throw new Error('Cotação deve ser maior que zero');
+  return { n: n, escala: (m[2] || '').length };
+}
+
+function p10n(k) { return BigInt(10) ** BigInt(k); }
+/** a/b arredondado meio-para-cima (a, b BigInt positivos). */
+function divArred(a, b) { return (BigInt(2) * a + b) / (BigInt(2) * b); }
+
+/** Valor pago (unid. mínimas da moeda paga) a partir do quitado e da cotação. */
+function calcularPago(quitado, cot, casasDivida, casasPaga) {
+  return Number(divArred(BigInt(quitado) * cot.n * p10n(casasPaga), p10n(casasDivida + cot.escala)));
+}
+
+/** Valor quitado (unid. mínimas da moeda da dívida) a partir do pago e da cotação. */
+function calcularQuitado(pago, cot, casasDivida, casasPaga) {
+  return Number(divArred(BigInt(pago) * p10n(casasDivida + cot.escala), cot.n * p10n(casasPaga)));
+}
+
+/** num/den (BigInt) em texto decimal pt-BR: 4 casas se >= 1, 6 se < 1, sem zeros à direita. */
+function formatarRazao(num, den) {
+  const dec = num >= den ? 4 : 6;
+  const s = divArred(num * p10n(dec), den).toString().padStart(dec + 1, '0');
+  const frac = s.slice(s.length - dec).replace(/0+$/, '');
+  return s.slice(0, s.length - dec) + (frac ? ',' + frac : '');
+}
+
+/** Quantas unidades da moeda paga valem 1 unidade da moeda da dívida. */
+function cotacaoDe(quitado, pago, casasDivida, casasPaga) {
+  return formatarRazao(BigInt(pago) * p10n(casasDivida), BigInt(quitado) * p10n(casasPaga));
+}
+
+/** "USD:5000;EUR:2700" -> [{moeda, valor}] (leitura tolerante, só para exibir). */
+function lerFontes(texto) {
+  return String(texto || '').split(';').map((s) => s.trim()).filter(Boolean).map((s) => {
+    const [moeda, valor] = s.split(':');
+    return { moeda: (moeda || '').trim().toUpperCase(), valor: Number(valor) };
+  });
+}
+
+/** "Ana:2;Bruno:1" -> {Ana: 2, Bruno: 1} */
+function lerPesos(texto) {
+  const r = {};
+  String(texto || '').split(';').map((s) => s.trim()).filter(Boolean).forEach((s) => {
+    const [nome, peso] = s.split(':');
+    if (nome) r[nome.trim()] = Number(peso);
+  });
+  return r;
+}
+
+function lista(texto) {
+  return String(texto || '').split(';').map((s) => s.trim()).filter(Boolean);
+}
+
+/** ['Ana', 'Bruno', 'Carla'] -> "Ana, Bruno e Carla" */
+function juntarNomes(nomes) {
+  if (nomes.length < 2) return nomes.join('');
+  return nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1];
+}
+
+/**
+ * Para quem a despesa foi paga, em texto: "todos", "si", "Carla", "Ana e Bruno".
+ * Pesos diferentes de 1 aparecem entre parênteses: "todos (Ana ×2)".
+ */
+function textoParaQuem(pagador, parts, todos, pesosTxt) {
+  let txt;
+  if (todos.length > 1 && parts.length === todos.length && todos.every((n) => parts.indexOf(n) >= 0)) txt = 'todos';
+  else if (parts.length === 1 && parts[0] === pagador) txt = 'si';
+  else txt = juntarNomes(parts);
+  const pesos = lerPesos(pesosTxt);
+  const dif = parts.filter((n) => pesos[n] != null && pesos[n] !== 1).map((n) => n + ' ×' + pesos[n]);
+  return txt + (dif.length ? ' (' + dif.join(', ') + ')' : '');
+}
+
+// --- Importar extrato (o arquivo é lido só no aparelho) ---
+
+/** CSV separado por vírgula -> linhas de células. Aceita BOM, CRLF, aspas e "" escapado. */
+function lerCSV(texto) {
+  const t = String(texto || '').replace(/^﻿/, '');
+  const linhas = [];
+  let linha = [], cel = '', aspas = false;
+  const fecharLinha = () => {
+    linha.push(cel);
+    if (linha.length > 1 || linha[0] !== '') linhas.push(linha);
+    linha = [];
+    cel = '';
+  };
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c !== '"') cel += c;
+      else if (t[i + 1] === '"') { cel += '"'; i++; }
+      else aspas = false;
+    } else if (c === '"') aspas = true;
+    else if (c === ',') { linha.push(cel); cel = ''; }
+    else if (c === '\r' || c === '\n') {
+      if (c === '\r' && t[i + 1] === '\n') i++;
+      fecharLinha();
+    } else cel += c;
+  }
+  if (cel !== '' || linha.length) fecharLinha();
+  return linhas;
+}
+
+/** "-2.95" (ponto decimal, sem milhar) -> 295 com 2 casas, sem sinal; excesso de casas arredonda meio-para-cima. */
+function decimalPonto(texto, casas) {
+  const m = /^\s*[-+]?(\d+)(?:\.(\d+))?\s*$/.exec(String(texto == null ? '' : texto));
+  if (!m) return null;
+  const frac = m[2] || '';
+  let n = Number(m[1]) * p10(casas) + Number((frac + '0'.repeat(casas)).slice(0, casas) || '0');
+  if (frac.length > casas && Number(frac[casas]) >= 5) n += 1;
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** "08-03-2025" (DD-MM-AAAA) -> "2025-03-08"; '' se não reconhecer. */
+function dataDMA(texto) {
+  const m = /^(\d{2})[-/.](\d{2})[-/.](\d{4})$/.exec(String(texto || '').trim());
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+
+/**
+ * Extrato CSV da Wise -> { origem, saidas, ignoradas }. Só saídas de dinheiro viram candidatas:
+ * entradas (depósitos, estornos) e conversões entre saldos ficam de fora.
+ * Cada saída: { ref, data, descricao, moeda, valor (a compra), moedaSaldo, valorSaldo (o desembolso), detalhe, sugerida }.
+ * Quando a Wise converteu na hora (compra em outra moeda), a compra vem de "Exchange To"/"Exchange To Amount".
+ * casasDe(codigo) informa as casas decimais de cada moeda.
+ */
+function lerExtratoWise(texto, casasDe) {
+  const linhas = lerCSV(texto);
+  if (!linhas.length) throw new Error('Arquivo vazio');
+  const cab = linhas[0].map((s) => s.trim());
+  if (['TransferWise ID', 'Date', 'Amount', 'Currency'].some((n) => cab.indexOf(n) < 0)) {
+    throw new Error('Formato não reconhecido. Por enquanto o app lê o extrato CSV da Wise.');
+  }
+  const campo = (l, nome) => { const i = cab.indexOf(nome); return i < 0 ? '' : String(l[i] || '').trim(); };
+  const vistos = {};
+  const saidas = [];
+  let ignoradas = 0;
+  linhas.slice(1).forEach((l) => {
+    const id = campo(l, 'TransferWise ID');
+    if (!id || vistos[id]) return;
+    vistos[id] = true;
+    const valorTxt = campo(l, 'Amount');
+    const tipo = campo(l, 'Transaction Type') || (valorTxt.charAt(0) === '-' ? 'DEBIT' : 'CREDIT');
+    const detalhe = campo(l, 'Transaction Details Type');
+    const moedaSaldo = campo(l, 'Currency').toUpperCase();
+    const valorSaldo = decimalPonto(valorTxt, casasDe(moedaSaldo));
+    const data = dataDMA(campo(l, 'Date'));
+    if (tipo !== 'DEBIT' || valorTxt.charAt(0) !== '-' || detalhe === 'CONVERSION' || !valorSaldo || !data) {
+      ignoradas += 1;
+      return;
+    }
+    let moeda = moedaSaldo, valor = valorSaldo;
+    const para = campo(l, 'Exchange To').toUpperCase();
+    if (para && para !== moedaSaldo) {
+      const v = decimalPonto(campo(l, 'Exchange To Amount'), casasDe(para));
+      if (v) { moeda = para; valor = v; }
+    }
+    saidas.push({
+      ref: 'wise:' + id, data: data, descricao: campo(l, 'Merchant') || campo(l, 'Description'),
+      moeda: moeda, valor: valor, moedaSaldo: moedaSaldo, valorSaldo: valorSaldo,
+      detalhe: detalhe, sugerida: detalhe === 'CARD',
+    });
+  });
+  return { origem: 'Wise', saidas: saidas, ignoradas: ignoradas };
+}
+
+/** Desembolsos já registrados de um pagador: uma perna por fonte (ou a própria compra), pagamentos e o valor transferido nos acertos. */
+function pernasDesembolso(lancamentos, pagador) {
+  const r = [];
+  lancamentos.forEach((l) => {
+    if (l.pagador !== pagador || l.excluido) return;
+    const perna = (moeda, valor) => r.push({ id: l.id, moeda: moeda, valor: Number(valor), data: l.data });
+    if (l.tipo === 'despesa') {
+      const fs = lerFontes(l.fontes);
+      if (fs.length) fs.forEach((f) => perna(f.moeda, f.valor));
+      else perna(l.moeda, l.valor);
+    } else if (l.tipo === 'pagamento') perna(l.moeda, l.valor);
+    else if (l.tipo === 'acerto_cruzado') perna(l.moeda_paga, l.valor_pago);
+  });
+  return r;
+}
+
+function diasEntre(a, b) {
+  const utc = (s) => { const p = String(s).split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); };
+  return Math.round(Math.abs(utc(a) - utc(b)) / 864e5);
+}
+
+/**
+ * Para cada saída do extrato, o id do lançamento que já a registra (ou null).
+ * Casa pelo desembolso: mesma moeda e valor, data ±2 dias, cada perna usada uma vez só;
+ * um lançamento importado antes (mesmo id) tem prioridade, depois a data mais próxima.
+ */
+function casarExtrato(saidas, pernas) {
+  const usadas = {};
+  return saidas.map((s) => {
+    let escolha = pernas.findIndex((p, i) => !usadas[i] && p.id === s.ref);
+    if (escolha < 0) {
+      let menor = 3;
+      pernas.forEach((p, i) => {
+        if (usadas[i] || p.moeda !== s.moedaSaldo || p.valor !== s.valorSaldo) return;
+        const d = diasEntre(p.data, s.data);
+        if (d < menor) { menor = d; escolha = i; }
+      });
+    }
+    if (escolha < 0) return null;
+    usadas[escolha] = true;
+    return pernas[escolha].id;
+  });
+}
+/** Link de convite (inteiro, só o fragmento ou "t=...") -> { token, api }. */
+function lerConvite(texto) {
+  let h = String(texto || '').trim();
+  const i = h.indexOf('#');
+  if (i >= 0) h = h.slice(i + 1);
+  else if (!/^(t|api)=/.test(h)) return { token: '', api: '' };
+  const p = new URLSearchParams(h);
+  return { token: (p.get('t') || '').trim(), api: (p.get('api') || '').trim() };
+}
+
+// --- Vários grupos (viagens, casa…) no mesmo aparelho. Cada grupo é uma planilha
+// com o seu Apps Script, então o endereço da API identifica o grupo.
+
+/** Chave do localStorage de um dado do grupo (estado, fila, eu, moeda). */
+function chaveGrupo(id, nome) { return 'dv.g.' + id + '.' + nome; }
+
+/**
+ * Inclui o grupo do convite {token, api} na lista (sem alterar a recebida).
+ * Mesma API = mesmo grupo: o token novo substitui o antigo (trocouToken).
+ */
+function incluirGrupo(grupos, convite, novoId) {
+  const i = grupos.findIndex((g) => g.api === convite.api);
+  if (i < 0) {
+    const g = { id: novoId, nome: '', token: convite.token, api: convite.api };
+    return { grupos: grupos.concat([g]), id: novoId, novo: true, trocouToken: false };
+  }
+  if (grupos[i].token === convite.token) return { grupos: grupos, id: grupos[i].id, novo: false, trocouToken: false };
+  const lista = grupos.slice();
+  lista[i] = Object.assign({}, grupos[i], { token: convite.token });
+  return { grupos: lista, id: grupos[i].id, novo: false, trocouToken: true };
+}
+
+/**
+ * Versão anterior (um grupo só, chaves dv.token, dv.api…) -> lista de grupos.
+ * store = { get, set, remove } com valores já em JSON. Grava primeiro o novo e só
+ * depois apaga o antigo. null se já migrou; senão, a lista de grupos.
+ */
+function migrarLegado(store, novoId, apiPadrao) {
+  if (store.get('dv.grupos') != null) return null;
+  const token = store.get('dv.token') || '';
+  const api = store.get('dv.api') || apiPadrao || '';
+  if (!token || !api) {
+    store.set('dv.grupos', []);
+    return [];
+  }
+  const antigas = { estado: 'dv.estado', fila: 'dv.fila', eu: 'dv.eu', moeda: 'dv.ultimaMoeda' };
+  Object.keys(antigas).forEach((nome) => {
+    const v = store.get(antigas[nome]);
+    if (v != null) store.set(chaveGrupo(novoId, nome), v);
+  });
+  const estado = store.get('dv.estado');
+  const grupos = [{ id: novoId, nome: (estado && estado.nome_viagem) || '', token: token, api: api }];
+  store.set('dv.grupos', grupos);
+  store.set('dv.grupoAtual', novoId);
+  ['dv.token', 'dv.api'].concat(Object.values(antigas)).forEach((k) => store.remove(k));
+  return grupos;
+}
+
+/** Categorias do grupo para escolher, mais a atual do lançamento se não estiver nelas. */
+function opcoesCategoria(categorias, atual) {
+  return atual && categorias.indexOf(atual) < 0 ? categorias.concat([atual]) : categorias.slice();
+}
+// </utils>
+
+// ---------------------------------------------------------------------------
+// Armazenamento local
+
+// Globais: lista de grupos, grupo aberto e visão do acerto. Por grupo (chaveGrupo):
+// estado, fila, eu (o meu nome nele) e moeda (a última usada).
+const LS = { grupos: 'dv.grupos', atual: 'dv.grupoAtual', visao: 'dv.visao' };
+function ler(chave, padrao) {
+  try { const v = localStorage.getItem(chave); return v == null ? padrao : JSON.parse(v); } catch (e) { return padrao; }
+}
+function gravar(chave, valor) {
+  try { localStorage.setItem(chave, JSON.stringify(valor)); } catch (e) { /* sem armazenamento */ }
+}
+function apagar(chave) {
+  try { localStorage.removeItem(chave); } catch (e) { /* sem armazenamento */ }
+}
+
+try {
+  migrarLegado({ get: (k) => ler(k, null), set: gravar, remove: apagar }, uuid(), API_URL);
+} catch (e) { /* sem armazenamento: começa sem grupos */ }
+
+let grupos = ler(LS.grupos, []);      // [{id, nome, token, api}]
+let atualId = ler(LS.atual, '');
+function grupoAtual() { return grupos.find((g) => g.id === atualId) || grupos[0] || null; }
+function lerG(nome, padrao) { const g = grupoAtual(); return g ? ler(chaveGrupo(g.id, nome), padrao) : padrao; }
+function gravarG(nome, valor) { const g = grupoAtual(); if (g) gravar(chaveGrupo(g.id, nome), valor); }
+
+let estado = lerG('estado', null);    // última resposta de ?acao=estado do grupo aberto
+let fila = lerG('fila', []);          // operações do grupo aberto ainda não sincronizadas
+let rede = 'ocioso';                  // ocioso | sincronizando | offline | erro
+let erroRede = '';
+let filtroPendentes = false;
+let enviados = [];                    // aceitos pelo servidor; seguem aplicados até o próximo estado chegar
+let emVoo = null;                     // uid do item da fila sendo enviado
+
+function eu() { return lerG('eu', ''); }
+
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 15) | 64;
+  b[8] = (b[8] & 63) | 128;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+
+function isoData(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function hoje() { return isoData(new Date()); }
+function ontem() { const d = new Date(); d.setDate(d.getDate() - 1); return isoData(d); }
+
+// ---------------------------------------------------------------------------
+// Dados derivados (servidor + fila local)
+
+function participantes() { return (estado && estado.participantes) || []; }
+/** Categorias do grupo (Config.categorias); servidor antigo não manda: a lista padrão. */
+function categorias() { return (estado && estado.categorias && estado.categorias.length) ? estado.categorias : CATEGORIAS; }
+
+function moedas() {
+  const base = ((estado && estado.moedas) || []).slice();
+  enviados.concat(fila).forEach((it) => {
+    if (it.acao === 'moeda' && !base.some((m) => m.moeda === it.dados.moeda)) base.push(it.dados);
+  });
+  return base;
+}
+function infoMoeda(codigo) {
+  const k = MOEDAS_CONHECIDAS[codigo];
+  return moedas().find((m) => m.moeda === codigo) || { moeda: codigo, casas_decimais: k ? k[0] : 2, simbolo: k ? k[1] : codigo };
+}
+function casas(codigo) { return infoMoeda(codigo).casas_decimais; }
+/** Uma só forma de indicar a moeda: o símbolo; o código só quando o símbolo é ambíguo na viagem (ex.: kr). */
+function rotuloMoeda(codigo) {
+  const m = infoMoeda(codigo);
+  if (!m.simbolo || moedas().some((x) => x.moeda !== codigo && x.simbolo === m.simbolo)) return codigo;
+  return m.simbolo;
+}
+function dinheiro(valor, codigo, opcoes) {
+  const s = rotuloMoeda(codigo);
+  const txt = formatarNumero(valor, casas(codigo), opcoes);
+  return txt.startsWith('−') ? '−' + s + ' ' + txt.slice(1) : s + ' ' + txt;
+}
+/** Cotação em texto com símbolos: "US$ 1 = ¥ 147,0588". */
+function textoCotacao(de, para, razao) {
+  return rotuloMoeda(de) + ' 1 = ' + rotuloMoeda(para) + ' ' + razao;
+}
+function paraInput(valor, codigo) {
+  return valor === '' || valor == null ? '' : formatarNumero(Number(valor), casas(codigo), { semMilhar: true });
+}
+function ultimaMoeda() {
+  const m = lerG('moeda', '');
+  const ms = moedas();
+  if (ms.some((x) => x.moeda === m)) return m;
+  return ms.length ? ms[0].moeda : 'BRL';
+}
+
+/** Lançamentos do servidor com as operações da fila aplicadas por cima. */
+function lancamentosVisiveis() {
+  const mapa = new Map();
+  ((estado && estado.lancamentos) || []).forEach((l) => mapa.set(l.id, Object.assign({}, l)));
+  enviados.concat(fila).forEach((it) => {
+    // Itens já enviados não são mais "não sincronizados", mas o estado do servidor ainda não os trouxe.
+    const marca = enviados.indexOf(it) >= 0 ? {} : { _local: true, _erro: it.erro || '' };
+    if (it.acao === 'criar' && !mapa.has(it.dados.id)) {
+      mapa.set(it.dados.id, Object.assign({ criado_por: eu() }, it.dados, marca));
+    } else if (it.acao === 'editar' && mapa.has(it.dados.id)) {
+      mapa.set(it.dados.id, Object.assign({}, mapa.get(it.dados.id), it.dados, marca));
+    } else if (it.acao === 'excluir') {
+      mapa.delete(it.dados.id);
+    } else if (it.acao === 'confirmar') {
+      (it.dados.ids || []).forEach((id) => {
+        if (mapa.has(id)) mapa.set(id, Object.assign({}, mapa.get(id), { status: 'confirmado' }, marca));
+      });
+    }
+  });
+  return Array.from(mapa.values()).sort((a, b) =>
+    (b.data || '').localeCompare(a.data || '') || (b.criado_em || '9').localeCompare(a.criado_em || '9'));
+}
+
+// ---------------------------------------------------------------------------
+// Rede e fila offline
+
+// Sem grupo explícito, as chamadas usam o grupo aberto.
+async function chamarGet(g) {
+  g = g || grupoAtual();
+  const url = (g.api || API_URL) + '?acao=estado&token=' + encodeURIComponent(g.token);
+  const r = await fetch(url, { cache: 'no-store' });
+  return lerResposta(r);
+}
+
+async function chamarPost(acao, dados, g) {
+  g = g || grupoAtual();
+  const r = await fetch(g.api || API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ acao: acao, token: g.token, autor: ler(chaveGrupo(g.id, 'eu'), ''), dados: dados }),
+  });
+  return lerResposta(r);
+}
+
+async function lerResposta(r) {
+  const texto = await r.text();
+  try {
+    return JSON.parse(texto);
+  } catch (e) {
+    return { ok: false, erro: 'resposta inesperada do servidor (HTTP ' + r.status + ')', temporario: true };
+  }
+}
+
+function enfileirar(acao, dados, adiarMs) {
+  const id = dados.id;
+  // Se o lançamento ainda não chegou ao servidor, corrige a criação em vez de empilhar.
+  const criacao = fila.find((it) => it.acao === 'criar' && it.dados.id === id && it.uid !== emVoo);
+  if (criacao && acao === 'editar') {
+    criacao.dados = Object.assign({}, criacao.dados, dados);
+    delete criacao.erro;
+  } else if (criacao && acao === 'excluir') {
+    fila = fila.filter((it) => !(it.dados.id === id && it.uid !== emVoo));
+  } else {
+    const item = { uid: uuid(), acao: acao, dados: dados, em: new Date().toISOString() };
+    if (adiarMs) item.ate = Date.now() + adiarMs; // só envia depois disso (janela do "Desfazer")
+    fila.push(item);
+  }
+  gravarG('fila', fila);
+  render();
+  atualizar();
+  if (adiarMs) setTimeout(atualizar, adiarMs + 200);
+}
+
+/** Várias operações de uma vez (ex.: importação), com um só envio. */
+function enfileirarVarios(ops) {
+  ops.forEach((op) => fila.push({ uid: uuid(), acao: op[0], dados: op[1], em: new Date().toISOString() }));
+  gravarG('fila', fila);
+  render();
+  atualizar();
+}
+
+// Enquanto a sincronização roda, o grupo aberto não muda (ver abrirGrupo).
+let sincronizando = null;
+function atualizar() {
+  if (!grupoAtual()) return Promise.resolve();
+  if (!sincronizando) {
+    sincronizando = (async () => {
+      try {
+        await sincronizar();
+        await buscarEstado();
+        await enviarOutrasFilas();
+      } finally {
+        sincronizando = null;
+      }
+    })();
+  }
+  return sincronizando;
+}
+
+/** Envia o que ficou na fila de outros grupos (lançado offline antes de trocar de grupo). */
+async function enviarOutrasFilas() {
+  const atual = grupoAtual();
+  for (const g of grupos.slice()) {
+    if (g === atual) continue;
+    const chave = chaveGrupo(g.id, 'fila');
+    let f = ler(chave, []);
+    for (;;) {
+      const item = f.find((it) => !it.erro && !(it.ate > Date.now()));
+      if (!item) break;
+      let resp;
+      try {
+        resp = await chamarPost(item.acao, item.dados, g);
+      } catch (e) {
+        return; // sem conexão: tenta na próxima atualização
+      }
+      if (resp.ok) f = f.filter((it) => it.uid !== item.uid);
+      else if (resp.temporario || resp.codigo === 'token_invalido') break;
+      else item.erro = resp.erro || 'erro desconhecido';
+      gravar(chave, f);
+    }
+  }
+}
+
+/** Itens não sincronizados de cada grupo: {id: n}. */
+function filasPorGrupo() {
+  const r = {};
+  grupos.forEach((g) => { r[g.id] = g === grupoAtual() ? fila.length : ler(chaveGrupo(g.id, 'fila'), []).length; });
+  return r;
+}
+
+async function sincronizar() {
+  for (;;) {
+    const item = fila.find((it) => !it.erro && !(it.ate > Date.now()));
+    if (!item) return;
+    rede = 'sincronizando';
+    render();
+    emVoo = item.uid;
+    let resp;
+    try {
+      resp = await chamarPost(item.acao, item.dados);
+    } catch (e) {
+      emVoo = null;
+      rede = 'offline';
+      render();
+      return;
+    }
+    emVoo = null;
+    if (resp.ok) {
+      fila = fila.filter((it) => it.uid !== item.uid);
+      enviados.push(item);
+    } else if (resp.temporario || resp.codigo === 'token_invalido') {
+      rede = 'erro';
+      erroRede = resp.erro;
+      gravarG('fila', fila);
+      render();
+      return;
+    } else {
+      item.erro = resp.erro || 'erro desconhecido';
+    }
+    gravarG('fila', fila);
+  }
+}
+
+async function buscarEstado() {
+  if (rede !== 'erro' && rede !== 'offline') rede = 'sincronizando';
+  render();
+  let resp;
+  try {
+    resp = await chamarGet();
+  } catch (e) {
+    rede = 'offline';
+    render();
+    return;
+  }
+  if (resp.ok) {
+    delete resp.ok;
+    estado = resp;
+    enviados = [];
+    gravarG('estado', estado);
+    const g = grupoAtual();
+    if (g && estado.nome_viagem && g.nome !== estado.nome_viagem) {
+      g.nome = estado.nome_viagem;
+      gravar(LS.grupos, grupos);
+    }
+    rede = 'ocioso';
+    erroRede = '';
+  } else {
+    rede = 'erro';
+    erroRede = resp.erro;
+  }
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Utilidades de interface
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+function maiuscula(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+const $ = (sel, raiz) => (raiz || document).querySelector(sel);
+const $$ = (sel, raiz) => Array.from((raiz || document).querySelectorAll(sel));
+
+let toastTimer = null;
+function toast(msg, acao, aoAgir) {
+  const t = $('#toast');
+  t.innerHTML = '<span>' + esc(msg) + '</span>' + (acao ? '<button type="button" class="toast-acao">' + esc(acao) + '</button>' : '');
+  t.classList.toggle('com-acao', !!acao);
+  if (acao) $('.toast-acao', t).onclick = () => { t.classList.remove('visivel'); aoAgir(); };
+  t.classList.add('visivel');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('visivel'), acao ? DESFAZER_MS : 2500);
+}
+const DESFAZER_MS = 5000;
+
+function quando(ts) {
+  const d = new Date(ts);
+  if (!ts || isNaN(d)) return '';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' às ' +
+    d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+/** Quem criou e quem editou, ao abrir um lançamento existente. */
+function autoriaHtml(l) {
+  if (!l) return '';
+  const partes = [];
+  if (l.criado_por) partes.push('Criado por ' + l.criado_por + (quando(l.criado_em) ? ' em ' + quando(l.criado_em) : ''));
+  if (l.editado_por) partes.push('editado por ' + l.editado_por + (quando(l.editado_em) ? ' em ' + quando(l.editado_em) : ''));
+  if (l.origem && l.origem !== 'manual') partes.push('origem: ' + l.origem);
+  if (l._local) partes.push('ainda não sincronizado');
+  return partes.length ? '<p class="dica">' + esc(maiuscula(partes.join(' · '))) + '</p>' : '';
+}
+
+function dataCurta(iso) {
+  const [a, m, d] = String(iso).split('-').map(Number);
+  if (!a) return iso || '';
+  const dt = new Date(a, m - 1, d, 12);
+  const ref = new Date();
+  ref.setHours(12, 0, 0, 0);
+  const dias = Math.round((ref - dt) / 864e5);
+  if (dias === 0) return 'Hoje';
+  if (dias === 1) return 'Ontem';
+  const opc = { weekday: 'long', day: 'numeric', month: 'long' };
+  if (a !== ref.getFullYear()) opc.year = 'numeric';
+  return maiuscula(dt.toLocaleDateString('pt-BR', opc).replace('-feira', ''));
+}
+
+const NOVA_MOEDA = '__nova';
+function opcoesMoeda(selecionada) {
+  return moedas().map((m) =>
+    '<option value="' + esc(m.moeda) + '"' + (m.moeda === selecionada ? ' selected' : '') + '>' +
+    esc(rotuloMoeda(m.moeda)) + '</option>').join('') +
+    '<option value="' + NOVA_MOEDA + '">+ Nova moeda…</option>';
+}
+
+/** Data como chips Hoje / Ontem / Outra data; o campo de data só aparece em "Outra data". */
+function campoData(valor) {
+  const h = hoje(), o = ontem();
+  const sel = valor === h ? h : valor === o ? o : 'outra';
+  return '<div class="campo"><span class="rotulo">Data</span>' +
+    chips('data', [h, o, 'outra'], [sel], false, ['Hoje', 'Ontem', 'Outra data']) +
+    '<input type="date" id="cData" aria-label="Data" value="' + esc(valor) + '"' + (sel === 'outra' ? '' : ' class="oculto"') + '></div>';
+}
+function ligarData() {
+  const grupo = $('.chips[data-grupo="data"]', dlgForm);
+  grupo.dataset.obrigatorio = '1';
+  grupo.addEventListener('change', () => {
+    const inp = $('#cData', dlgForm);
+    const outra = lerChips(dlgForm, 'data')[0] === 'outra';
+    inp.classList.toggle('oculto', !outra);
+    if (outra) { try { inp.showPicker(); } catch (e) { inp.focus(); } }
+  });
+}
+function lerData() {
+  const v = lerChips(dlgForm, 'data')[0];
+  const data = v === 'outra' ? $('#cData', dlgForm).value : v;
+  if (!data) throw new Error('Informe a data');
+  return data;
+}
+
+/** Alternador do registro de pagamento: mesma moeda (pagamento) ou outra moeda (acerto cruzado). */
+function alternadorPagamento(outra) {
+  return '<div class="segmentado" role="group" aria-label="Moeda do pagamento">' +
+    '<button type="button" data-tipo-pag="mesma" aria-pressed="' + !outra + '">Mesma moeda</button>' +
+    '<button type="button" data-tipo-pag="outra" aria-pressed="' + outra + '">Outra moeda</button></div>';
+}
+
+/** Colunas da grade de chips: linhas cheias sempre que possível (4 itens = 2×2). */
+function colunasChips(n) {
+  return n <= 3 ? Math.max(n, 1) : n === 4 ? 2 : n <= 6 || n === 9 ? 3 : 4;
+}
+
+function chips(grupo, opcoes, selecionados, multi, rotulos) {
+  return '<div class="chips" style="--cols:' + colunasChips(opcoes.length) + '" data-grupo="' + grupo + '" data-multi="' + (multi ? '1' : '') + '" role="group">' +
+    opcoes.map((o, i) => '<button type="button" class="chip" data-valor="' + esc(o) + '" aria-pressed="' +
+      (selecionados.indexOf(o) >= 0) + '">' + esc(rotulos ? rotulos[i] : o) + '</button>').join('') + '</div>';
+}
+function lerChips(raiz, grupo) {
+  return $$('.chips[data-grupo="' + grupo + '"] .chip[aria-pressed="true"]', raiz).map((b) => b.dataset.valor);
+}
+function marcarChips(raiz, grupo, valores) {
+  $$('.chips[data-grupo="' + grupo + '"] .chip', raiz).forEach((b) => {
+    b.setAttribute('aria-pressed', String(valores.indexOf(b.dataset.valor) >= 0));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Diálogo
+
+const dlg = $('#dlg');
+const dlgForm = $('#dlgForm');
+
+let statusAoSalvar = null; // 'confirmado' quando o botão "Confirmar" de um pendente envia o formulário
+function enviarConfirmando() {
+  statusAoSalvar = 'confirmado';
+  if (dlgForm.requestSubmit) dlgForm.requestSubmit();
+  else dlgForm.onsubmit(new Event('submit'));
+}
+
+function abrirDialogo(titulo, corpo, aoSalvar) {
+  statusAoSalvar = null;
+  dlgForm.innerHTML =
+    '<div class="dlg-topo"><h2>' + esc(titulo) + '</h2>' +
+    '<button type="button" class="fechar" data-fechar aria-label="Fechar">×</button></div>' + corpo;
+  dlgForm.onsubmit = (ev) => {
+    ev.preventDefault();
+    const erro = $('.erro[data-erro]', dlgForm);
+    try {
+      if (aoSalvar) aoSalvar();
+    } catch (e) {
+      if (erro) erro.textContent = e.message;
+      else toast(e.message);
+    }
+    statusAoSalvar = null;
+  };
+  if (!dlg.open) dlg.showModal();
+  dlg.scrollTop = 0;
+}
+function fecharDialogo() { if (dlg.open) dlg.close(); }
+
+// "+ Nova moeda…" em qualquer seletor de moeda: cadastra por cima do formulário e já seleciona.
+dlgForm.addEventListener('focusin', (ev) => {
+  const s = ev.target;
+  if (s.tagName === 'SELECT' && s.value !== NOVA_MOEDA) s.dataset.anterior = s.value;
+});
+dlgForm.addEventListener('change', (ev) => {
+  const sel = ev.target;
+  if (sel.tagName !== 'SELECT') return;
+  if (sel.value !== NOVA_MOEDA) { sel.dataset.anterior = sel.value; return; }
+  ev.stopPropagation(); // fase de captura: os ouvintes do próprio seletor não veem "__nova"
+  sel.value = sel.dataset.anterior || sel.options[0].value;
+  abrirMoeda((codigo) => {
+    $$('select', dlgForm).filter((s) => s.querySelector('option[value="' + NOVA_MOEDA + '"]')).forEach((s) => {
+      s.innerHTML = opcoesMoeda(s === sel ? codigo : s.value);
+    });
+    sel.dataset.anterior = codigo;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}, true);
+
+dlg.addEventListener('click', (ev) => {
+  if (ev.target === dlg) { fecharDialogo(); return; } // toque no fundo
+  if (ev.target.closest('[data-fechar]')) { fecharDialogo(); return; }
+  const chip = ev.target.closest('.chip');
+  if (chip) {
+    const grupo = chip.parentElement;
+    const ligado = chip.getAttribute('aria-pressed') === 'true';
+    if (grupo.dataset.multi) {
+      chip.setAttribute('aria-pressed', String(!ligado));
+    } else {
+      $$('.chip', grupo).forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      if (!ligado || grupo.dataset.obrigatorio) chip.setAttribute('aria-pressed', 'true');
+    }
+    grupo.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Formulário: despesa
+
+function abrirDespesa(l) {
+  const editando = !!l;
+  const nomes = participantes();
+  const d = l || {
+    moeda: ultimaMoeda(), valor: '', descricao: '', pagador: nomes.indexOf(eu()) >= 0 ? eu() : nomes[0],
+    participantes: nomes.join(';'), pesos: '', data: hoje(), categoria: '', fontes: '',
+  };
+  let fontes = lerFontes(d.fontes).map((f) => ({ moeda: f.moeda, texto: paraInput(f.valor, f.moeda), auto: false }));
+  if (!fontes.length) fontes = null; // null = pago na própria moeda da compra
+  const pesosIni = lerPesos(d.pesos);
+  let pesosAbertos = Object.keys(pesosIni).length > 0;
+  const cats = opcoesCategoria(categorias(), d.categoria);
+
+  let acoes = '';
+  if (editando) acoes += '<button type="button" class="perigo" data-excluir>Excluir</button>';
+  if (l && l.status === 'pendente') acoes += '<button type="button" data-confirmar>Confirmar</button>';
+
+  abrirDialogo(editando ? 'Editar despesa' : 'Nova despesa',
+    '<div class="campo-valor">' +
+      '<input id="fValor" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="0,00" aria-label="Valor" value="' + esc(paraInput(d.valor, d.moeda)) + '">' +
+      '<select id="fMoeda" aria-label="Moeda">' + opcoesMoeda(d.moeda) + '</select>' +
+    '</div>' +
+    '<button type="button" class="pago-com" id="fPagoCom"></button>' +
+    '<div id="fFontes" class="fontes oculto"></div>' +
+    '<label class="campo"><span>Descrição</span><input id="fDesc" autocomplete="off" enterkeyhint="done" placeholder="Ex.: jantar, táxi, ingressos" value="' + esc(d.descricao) + '"></label>' +
+    '<div class="campo"><span class="rotulo">Quem pagou</span>' + chips('pagador', nomes, [d.pagador], false) + '</div>' +
+    '<div class="campo"><span class="rotulo">Dividir entre <button type="button" class="link link-dir" data-todos>todos</button></span>' +
+      chips('participantes', nomes, lista(d.participantes), true) + '</div>' +
+    '<div class="campo"><button type="button" class="link" style="justify-self:start" id="fPesosBtn"></button><div id="fPesos" class="pesos oculto"></div></div>' +
+    campoData(d.data) +
+    '<div class="campo"><span class="rotulo">Categoria (opcional)</span>' + chips('categoria', cats, [d.categoria], false, cats.map(maiuscula)) + '</div>' +
+    autoriaHtml(l) +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
+    salvar);
+
+  $('.chips[data-grupo="pagador"]', dlgForm).dataset.obrigatorio = '1';
+  ligarData();
+  const fValor = $('#fValor'), fMoeda = $('#fMoeda'), fPagoCom = $('#fPagoCom'), fFontes = $('#fFontes');
+  if (!editando) fValor.focus();
+  fValor.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); $('#fDesc').focus(); }
+  });
+
+  function compra() {
+    let v = null;
+    try { v = parseValor(fValor.value, casas(fMoeda.value)); } catch (e) { /* ainda digitando */ }
+    return { moeda: fMoeda.value, valor: v };
+  }
+
+  function renderFontes() {
+    if (!fontes) {
+      fPagoCom.innerHTML = 'Pago com <b>' + esc(rotuloMoeda(fMoeda.value)) + '</b> · alterar';
+      fFontes.classList.add('oculto');
+      return;
+    }
+    fPagoCom.innerHTML = 'Pago com (desembolso real):';
+    fFontes.classList.remove('oculto');
+    fFontes.innerHTML = fontes.map((f, i) =>
+      '<div class="fonte" data-i="' + i + '">' +
+        '<select data-fm aria-label="Moeda da fonte ' + (i + 1) + '">' + opcoesMoeda(f.moeda, true) + '</select>' +
+        '<input data-fv inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor desembolsado ' + (i + 1) + '" value="' + esc(f.texto) + '">' +
+        '<button type="button" data-fx aria-label="Remover fonte">×</button>' +
+      '</div>').join('') +
+      (fontes.length < 3 ? '<button type="button" class="link" style="justify-self:start" data-fadd>+ completar com outro saldo</button>' : '') +
+      '<p class="dica" id="fCot"></p>';
+    renderCotacaoImplicita();
+  }
+
+  function renderCotacaoImplicita() {
+    const alvo = $('#fCot');
+    if (!alvo) return;
+    const c = compra();
+    alvo.textContent = '';
+    if (!fontes || fontes.length !== 1 || fontes[0].moeda === c.moeda || !c.valor) return;
+    let v = null;
+    try { v = parseValor(fontes[0].texto, casas(fontes[0].moeda)); } catch (e) { return; }
+    if (!v) return;
+    const a = fontes[0].moeda, b = c.moeda;
+    alvo.textContent = 'Cotação implícita (só conferência): ' +
+      textoCotacao(a, b, cotacaoDe(v, c.valor, casas(a), casas(b))) + ' · ' +
+      textoCotacao(b, a, cotacaoDe(c.valor, v, casas(b), casas(a)));
+  }
+
+  function renderPesos() {
+    const btn = $('#fPesosBtn'), box = $('#fPesos');
+    const sel = lerChips(dlgForm, 'participantes');
+    if (!pesosAbertos) {
+      btn.textContent = 'Divisão igual · ajustar pesos';
+      box.classList.add('oculto');
+      return;
+    }
+    const atuais = {};
+    $$('input[data-peso]', box).forEach((i) => { atuais[i.dataset.peso] = i.value; });
+    btn.textContent = 'Pesos (voltar à divisão igual)';
+    box.classList.remove('oculto');
+    box.innerHTML = sel.map((n) => {
+      const v = atuais[n] != null ? atuais[n] : (pesosIni[n] || 1);
+      return '<label>' + esc(n) + '<input data-peso="' + esc(n) + '" inputmode="numeric" value="' + esc(v) + '"></label>';
+    }).join('');
+  }
+
+  fPagoCom.onclick = () => {
+    if (fontes) return;
+    fontes = [{ moeda: fMoeda.value, texto: fValor.value, auto: true }];
+    renderFontes();
+  };
+  fFontes.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-fadd]')) {
+      const usadas = fontes.map((f) => f.moeda);
+      const livre = moedas().map((m) => m.moeda).find((m) => usadas.indexOf(m) < 0) || fMoeda.value;
+      fontes.push({ moeda: livre, texto: '', auto: false });
+      renderFontes();
+      $$('input[data-fv]', fFontes).pop().focus();
+    } else if (ev.target.closest('[data-fx]')) {
+      fontes.splice(Number(ev.target.closest('.fonte').dataset.i), 1);
+      if (!fontes.length) fontes = null;
+      renderFontes();
+    }
+  });
+  fFontes.addEventListener('input', (ev) => {
+    const linha = ev.target.closest('.fonte');
+    if (!linha || !ev.target.matches('[data-fv]')) return;
+    const f = fontes[Number(linha.dataset.i)];
+    f.texto = ev.target.value;
+    f.auto = false;
+    renderCotacaoImplicita();
+  });
+  fFontes.addEventListener('change', (ev) => {
+    const linha = ev.target.closest('.fonte');
+    if (!linha || !ev.target.matches('[data-fm]')) return;
+    const f = fontes[Number(linha.dataset.i)];
+    f.moeda = ev.target.value;
+    f.texto = '';
+    f.auto = false;
+    renderFontes();
+    $('input[data-fv]', $('.fonte[data-i="' + linha.dataset.i + '"]', fFontes)).focus();
+  });
+  fValor.addEventListener('input', () => {
+    if (fontes && fontes.length === 1 && fontes[0].auto && fontes[0].moeda === fMoeda.value) {
+      fontes[0].texto = fValor.value;
+      const inp = $('input[data-fv]', fFontes);
+      if (inp) inp.value = fValor.value;
+    }
+    renderCotacaoImplicita();
+  });
+  fMoeda.addEventListener('change', () => {
+    if (fontes && fontes.length === 1 && fontes[0].auto) fontes = null;
+    renderFontes();
+  });
+  $('#fPesosBtn').onclick = () => { pesosAbertos = !pesosAbertos; renderPesos(); };
+  const btnTodos = $('[data-todos]', dlgForm);
+  const todosMarcados = () => lerChips(dlgForm, 'participantes').length === nomes.length;
+  const rotularTodos = () => { btnTodos.textContent = todosMarcados() ? 'limpar' : 'todos'; };
+  btnTodos.onclick = () => {
+    marcarChips(dlgForm, 'participantes', todosMarcados() ? [] : nomes);
+    rotularTodos();
+    renderPesos();
+  };
+  $('.chips[data-grupo="participantes"]', dlgForm).addEventListener('change', () => { rotularTodos(); renderPesos(); });
+  rotularTodos();
+  const btnExcluir = $('[data-excluir]', dlgForm);
+  if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
+  const btnConfirmar = $('[data-confirmar]', dlgForm);
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
+
+  renderFontes();
+  renderPesos();
+
+  function salvar() {
+    const moeda = fMoeda.value;
+    const valor = parseValor(fValor.value, casas(moeda));
+    if (!valor) throw new Error('Informe o valor da compra');
+    const pagador = lerChips(dlgForm, 'pagador')[0];
+    if (!pagador) throw new Error('Escolha quem pagou');
+    const parts = lerChips(dlgForm, 'participantes');
+    if (!parts.length) throw new Error('Escolha entre quem dividir');
+
+    let pesos = '';
+    if (pesosAbertos) {
+      const lidos = parts.map((n) => {
+        const inp = $$('input[data-peso]', dlgForm).find((i) => i.dataset.peso === n);
+        const p = Number(inp ? inp.value : 1);
+        if (!Number.isInteger(p) || p < 1) throw new Error('Peso de ' + n + ' deve ser um inteiro ≥ 1');
+        return [n, p];
+      });
+      if (lidos.some((x) => x[1] !== 1)) pesos = lidos.map((x) => x[0] + ':' + x[1]).join(';');
+    }
+
+    let textoFontes = '';
+    if (fontes) {
+      const vistas = {};
+      const lidas = fontes.map((f) => {
+        if (vistas[f.moeda]) throw new Error('Pago com: ' + rotuloMoeda(f.moeda) + ' aparece duas vezes');
+        vistas[f.moeda] = true;
+        const v = parseValor(f.texto, casas(f.moeda));
+        if (!v) throw new Error('Pago com: informe o valor em ' + rotuloMoeda(f.moeda));
+        return { moeda: f.moeda, valor: v };
+      });
+      const igualCompra = lidas.length === 1 && lidas[0].moeda === moeda && lidas[0].valor === valor;
+      if (!igualCompra) textoFontes = lidas.map((f) => f.moeda + ':' + f.valor).join(';');
+    }
+
+    const data = lerData();
+    const dados = {
+      id: l ? l.id : uuid(),
+      tipo: 'despesa',
+      data: data,
+      descricao: $('#fDesc').value.trim(),
+      categoria: lerChips(dlgForm, 'categoria')[0] || '',
+      moeda: moeda,
+      valor: valor,
+      fontes: textoFontes,
+      pagador: pagador,
+      participantes: parts.join(';'),
+      pesos: pesos,
+      moeda_paga: '',
+      valor_pago: '',
+      status: statusAoSalvar || (l ? l.status : 'confirmado'),
+      origem: l ? l.origem : 'manual',
+    };
+    gravarG('moeda', moeda);
+    fecharDialogo();
+    enfileirar(editando ? 'editar' : 'criar', dados);
+    toast(statusAoSalvar ? 'Despesa confirmada' : editando ? 'Despesa atualizada' : 'Despesa registrada');
+  }
+}
+
+/** Exclui sem pedir confirmação; a exclusão espera alguns segundos na fila para poder ser desfeita. */
+function excluirLancamento(l) {
+  fecharDialogo();
+  const antes = fila.slice();
+  enfileirar('excluir', { id: l.id }, DESFAZER_MS);
+  const item = fila.find((it) => antes.indexOf(it) < 0);   // a exclusão enfileirada (se houver)
+  const removidos = antes.filter((it) => fila.indexOf(it) < 0); // criação local descartada junto
+  toast('Lançamento excluído', 'Desfazer', () => {
+    if (item && (fila.indexOf(item) < 0 || emVoo === item.uid)) {
+      toast('Já sincronizado; não dá mais para desfazer');
+      return;
+    }
+    fila = fila.filter((it) => it !== item).concat(removidos)
+      .sort((a, b) => (a.em < b.em ? -1 : a.em > b.em ? 1 : 0));
+    gravarG('fila', fila);
+    render();
+    atualizar();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Formulário: pagamento (mesma moeda)
+
+function abrirPagamento(l, pre) {
+  const editando = !!l;
+  const nomes = participantes();
+  const d = l ? { de: l.pagador, para: lista(l.participantes)[0], moeda: l.moeda, valor: l.valor, data: l.data, descricao: l.descricao }
+    : Object.assign({ de: eu(), para: '', moeda: ultimaMoeda(), valor: '', data: hoje(), descricao: '' }, pre || {});
+
+  let acoes = '';
+  if (editando) acoes += '<button type="button" class="perigo" data-excluir>Excluir</button>';
+  if (l && l.status === 'pendente') acoes += '<button type="button" data-confirmar>Confirmar</button>';
+
+  abrirDialogo(editando ? 'Editar pagamento' : 'Registrar pagamento',
+    (editando ? '' : alternadorPagamento(false)) +
+    '<div class="campo"><span class="rotulo">Quem pagou</span>' + chips('de', nomes, [d.de], false) + '</div>' +
+    '<div class="campo"><span class="rotulo">Para quem</span>' + chips('para', nomes, [d.para], false) + '</div>' +
+    '<div class="campo-valor">' +
+      '<input id="pValor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor" value="' + esc(paraInput(d.valor, d.moeda)) + '">' +
+      '<select id="pMoeda" aria-label="Moeda">' + opcoesMoeda(d.moeda) + '</select>' +
+    '</div>' +
+    campoData(d.data) +
+    '<label class="campo"><span>Descrição (opcional)</span><input id="pDesc" autocomplete="off" value="' + esc(d.descricao) + '"></label>' +
+    autoriaHtml(l) +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
+    salvar);
+
+  $$('.chips', dlgForm).forEach((c) => { c.dataset.obrigatorio = '1'; });
+  const btnExcluir = $('[data-excluir]', dlgForm);
+  if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
+  const btnConfirmar = $('[data-confirmar]', dlgForm);
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
+  ligarData();
+  const btnOutra = $('[data-tipo-pag="outra"]', dlgForm);
+  if (btnOutra) {
+    btnOutra.onclick = () => {
+      let v = '';
+      try { v = parseValor($('#pValor').value, casas($('#pMoeda').value)) || ''; } catch (e) { /* ignora */ }
+      let data = hoje();
+      try { data = lerData(); } catch (e) { /* ignora */ }
+      abrirAcerto(null, { de: lerChips(dlgForm, 'de')[0], para: lerChips(dlgForm, 'para')[0], moeda: $('#pMoeda').value, valor: v,
+        data: data, descricao: $('#pDesc').value });
+    };
+  }
+
+  function salvar() {
+    const de = lerChips(dlgForm, 'de')[0], para = lerChips(dlgForm, 'para')[0];
+    if (!de || !para) throw new Error('Escolha quem pagou e quem recebeu');
+    if (de === para) throw new Error('Quem paga e quem recebe devem ser pessoas diferentes');
+    const moeda = $('#pMoeda').value;
+    const valor = parseValor($('#pValor').value, casas(moeda));
+    if (!valor) throw new Error('Informe o valor');
+    const dados = {
+      id: l ? l.id : uuid(), tipo: 'pagamento', data: lerData(),
+      descricao: $('#pDesc').value.trim(), categoria: '', moeda: moeda, valor: valor, fontes: '',
+      pagador: de, participantes: para, pesos: '', moeda_paga: '', valor_pago: '',
+      status: statusAoSalvar || (l ? l.status : 'confirmado'), origem: l ? l.origem : 'manual',
+    };
+    fecharDialogo();
+    enfileirar(editando ? 'editar' : 'criar', dados);
+    toast('Pagamento registrado');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formulário: acerto cruzado
+
+function dividaAtual(de, para, moeda) {
+  const ts = (estado && estado.transferencias_por_moeda && estado.transferencias_por_moeda[moeda]) || [];
+  const t = ts.find((x) => x.de === de && x.para === para);
+  return t ? t.valor : 0;
+}
+
+function abrirAcerto(l, pre) {
+  const editando = !!l;
+  const nomes = participantes();
+  const d = l
+    ? { de: l.pagador, para: lista(l.participantes)[0], moeda: l.moeda, valor: l.valor, moeda_paga: l.moeda_paga, valor_pago: l.valor_pago, data: l.data, descricao: l.descricao }
+    : Object.assign({ de: eu(), para: '', moeda: ultimaMoeda(), valor: '', moeda_paga: '', valor_pago: '', data: hoje(), descricao: '' }, pre || {});
+  if (!d.moeda_paga || d.moeda_paga === d.moeda) {
+    const u = lerG('moeda', '');
+    d.moeda_paga = u && u !== d.moeda ? u : ((moedas().find((m) => m.moeda !== d.moeda) || {}).moeda || '');
+  }
+  // Os dois últimos campos editados definem o terceiro.
+  let recentes = editando ? ['quitado', 'pago'] : (d.valor ? ['quitado'] : []);
+
+  let acoes = '';
+  if (editando) acoes += '<button type="button" class="perigo" data-excluir>Excluir</button>';
+  if (l && l.status === 'pendente') acoes += '<button type="button" data-confirmar>Confirmar</button>';
+
+  abrirDialogo(editando ? 'Editar acerto em outra moeda' : 'Registrar pagamento',
+    (editando ? '' : alternadorPagamento(true)) +
+    '<div class="campo"><span class="rotulo">Quem paga</span>' + chips('de', nomes, [d.de], false) + '</div>' +
+    '<div class="campo"><span class="rotulo">Quem recebe</span>' + chips('para', nomes, [d.para], false) + '</div>' +
+    '<div class="grade2">' +
+      '<label class="campo"><span>Dívida em</span><select id="aMoeda">' + opcoesMoeda(d.moeda) + '</select></label>' +
+      '<label class="campo"><span>Paga em</span><select id="aMoedaPaga">' + opcoesMoeda(d.moeda_paga) + '</select></label>' +
+    '</div>' +
+    '<p class="dica" id="aDivida"></p>' +
+    '<p class="dica">Preencha dois dos três campos; o terceiro é calculado.</p>' +
+    '<div class="grade2">' +
+      '<label class="campo"><span id="aRotQuitado">Valor quitado</span><input id="aQuitado" data-campo="quitado" inputmode="decimal" autocomplete="off" value="' + esc(paraInput(d.valor, d.moeda)) + '"></label>' +
+      '<label class="campo"><span id="aRotPago">Valor pago</span><input id="aPago" data-campo="pago" inputmode="decimal" autocomplete="off" value="' + esc(d.valor_pago !== '' ? paraInput(d.valor_pago, d.moeda_paga) : '') + '"></label>' +
+    '</div>' +
+    '<label class="campo"><span id="aRotCot">Cotação</span><input id="aCot" data-campo="cotacao" inputmode="decimal" autocomplete="off"></label>' +
+    '<p class="alerta" id="aAlerta"></p>' +
+    '<div class="resumo-acerto" id="aResumo"></div>' +
+    campoData(d.data) +
+    '<label class="campo"><span>Descrição (opcional)</span><input id="aDesc" autocomplete="off" value="' + esc(d.descricao) + '"></label>' +
+    autoriaHtml(l) +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
+    salvar);
+
+  $$('.chips', dlgForm).forEach((c) => { c.dataset.obrigatorio = '1'; });
+  ligarData();
+  const btnMesma = $('[data-tipo-pag="mesma"]', dlgForm);
+  if (btnMesma) {
+    btnMesma.onclick = () => {
+      let v = '';
+      try { v = parseValor(campos.quitado.value, casas(aMoeda.value)) || ''; } catch (e) { /* ignora */ }
+      let data = hoje();
+      try { data = lerData(); } catch (e) { /* ignora */ }
+      abrirPagamento(null, { de: lerChips(dlgForm, 'de')[0], para: lerChips(dlgForm, 'para')[0], moeda: aMoeda.value, valor: v,
+        data: data, descricao: $('#aDesc').value });
+    };
+  }
+  const campos = { quitado: $('#aQuitado'), pago: $('#aPago'), cotacao: $('#aCot') };
+  const aMoeda = $('#aMoeda'), aMoedaPaga = $('#aMoedaPaga');
+  let calculado = null;
+
+  function ler3() {
+    const md = aMoeda.value, mp = aMoedaPaga.value;
+    const r = { md: md, mp: mp, cd: casas(md), cp: casas(mp), quitado: null, pago: null, cot: null, erro: '' };
+    try { r.quitado = parseValor(campos.quitado.value, r.cd); } catch (e) { r.erro = 'Valor quitado: ' + e.message; }
+    try { r.pago = parseValor(campos.pago.value, r.cp); } catch (e) { r.erro = 'Valor pago: ' + e.message; }
+    try { r.cot = parseDecimal(campos.cotacao.value); } catch (e) { r.erro = e.message; }
+    return r;
+  }
+
+  function recalcular() {
+    const r0 = ler3();
+    Object.values(campos).forEach((c) => c.classList.remove('calculado'));
+    calculado = recentes.length === 2 ? ['quitado', 'pago', 'cotacao'].find((c) => recentes.indexOf(c) < 0) : null;
+    if (!calculado && recentes.length < 2) {
+      // Com só um campo informado, a cotação fica como o campo a calcular.
+      if (r0.quitado && r0.pago && recentes.indexOf('cotacao') < 0) calculado = 'cotacao';
+    }
+    if (calculado) {
+      const c = campos[calculado];
+      c.classList.add('calculado');
+      let v = '';
+      if (calculado === 'cotacao' && r0.quitado && r0.pago) v = cotacaoDe(r0.quitado, r0.pago, r0.cd, r0.cp);
+      if (calculado === 'pago' && r0.quitado && r0.cot) v = paraInput(calcularPago(r0.quitado, r0.cot, r0.cd, r0.cp), r0.mp);
+      if (calculado === 'quitado' && r0.pago && r0.cot) v = paraInput(calcularQuitado(r0.pago, r0.cot, r0.cd, r0.cp), r0.md);
+      c.value = v;
+    }
+    mostrarResumo();
+  }
+
+  function mostrarResumo() {
+    const r = ler3();
+    const de = lerChips(dlgForm, 'de')[0], para = lerChips(dlgForm, 'para')[0];
+    $('#aRotQuitado').textContent = 'Valor quitado (' + rotuloMoeda(r.md) + ')';
+    $('#aRotPago').textContent = 'Valor pago (' + rotuloMoeda(r.mp) + ')';
+    $('#aRotCot').textContent = 'Cotação: ' + textoCotacao(r.md, r.mp, '?');
+    let divida = de && para ? dividaAtual(de, para, r.md) : 0;
+    if (l && l.pagador === de && lista(l.participantes)[0] === para && l.moeda === r.md) divida += Number(l.valor);
+    $('#aDivida').textContent = !de || !para ? '' : divida
+      ? 'Dívida atual: ' + de + ' deve ' + dinheiro(divida, r.md) + ' a ' + para + '.'
+      : 'Hoje ' + de + ' não deve nada a ' + para + ' em ' + rotuloMoeda(r.md) + '.';
+    $('#aAlerta').textContent = r.quitado && r.quitado > divida
+      ? 'Atenção: quita mais que a dívida atual (' + dinheiro(divida, r.md) + '); a diferença inverte a direção da dívida.'
+      : '';
+    $('#aResumo').textContent = r.erro ? '' : (de && para && r.quitado && r.pago && r.md !== r.mp)
+      ? de + ' transfere ' + dinheiro(r.pago, r.mp) + ' a ' + para + ' e quita ' + dinheiro(r.quitado, r.md) +
+        ' da dívida (' + textoCotacao(r.md, r.mp, cotacaoDe(r.quitado, r.pago, r.cd, r.cp)) + ').'
+      : '';
+  }
+
+  Object.keys(campos).forEach((nome) => {
+    campos[nome].addEventListener('input', () => {
+      recentes = recentes.filter((x) => x !== nome).concat(nome).slice(-2);
+      recalcular();
+    });
+  });
+  aMoeda.addEventListener('change', recalcular);
+  aMoedaPaga.addEventListener('change', recalcular);
+  $$('.chips', dlgForm).forEach((c) => c.addEventListener('change', mostrarResumo));
+  const btnExcluir = $('[data-excluir]', dlgForm);
+  if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
+  const btnConfirmar = $('[data-confirmar]', dlgForm);
+  if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
+  recalcular();
+  if (!editando) (d.valor ? campos.pago : campos.quitado).focus();
+
+  function salvar() {
+    const r = ler3();
+    if (r.erro) throw new Error(r.erro);
+    const de = lerChips(dlgForm, 'de')[0], para = lerChips(dlgForm, 'para')[0];
+    if (!de || !para) throw new Error('Escolha quem paga e quem recebe');
+    if (de === para) throw new Error('Quem paga e quem recebe devem ser pessoas diferentes');
+    if (r.md === r.mp) throw new Error('A moeda paga deve ser diferente da moeda da dívida (use "Registrar pagamento")');
+    if (!r.quitado || !r.pago) throw new Error('Preencha dois dos três campos (valor quitado, valor pago, cotação)');
+    const dados = {
+      id: l ? l.id : uuid(), tipo: 'acerto_cruzado', data: lerData(),
+      descricao: $('#aDesc').value.trim(), categoria: '', moeda: r.md, valor: r.quitado, fontes: '',
+      pagador: de, participantes: para, pesos: '', moeda_paga: r.mp, valor_pago: r.pago,
+      status: statusAoSalvar || (l ? l.status : 'confirmado'), origem: l ? l.origem : 'manual',
+    };
+    fecharDialogo();
+    enfileirar(editando ? 'editar' : 'criar', dados);
+    toast('Acerto registrado');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formulário: cadastrar moeda
+
+const MOEDAS_CONHECIDAS = {
+  BRL: [2, 'R$'], USD: [2, 'US$'], EUR: [2, '€'], GBP: [2, '£'], JPY: [0, '¥'], CLP: [0, 'CLP$'],
+  ARS: [2, 'AR$'], UYU: [2, '$U'], PYG: [0, '₲'], BOB: [2, 'Bs'], PEN: [2, 'S/'], COP: [2, 'COL$'],
+  MXN: [2, 'MX$'], CAD: [2, 'C$'], AUD: [2, 'A$'], NZD: [2, 'NZ$'], CHF: [2, 'CHF'], CNY: [2, 'CN¥'],
+  KRW: [0, '₩'], THB: [2, '฿'], VND: [0, '₫'], IDR: [2, 'Rp'], INR: [2, '₹'], ZAR: [2, 'R'],
+  TRY: [2, '₺'], SEK: [2, 'kr'], NOK: [2, 'kr'], DKK: [2, 'kr'], CZK: [2, 'Kč'], HUF: [2, 'Ft'],
+  PLN: [2, 'zł'], ISK: [0, 'kr'], MAD: [2, 'DH'], EGP: [2, 'E£'], AED: [2, 'AED'], ILS: [2, '₪'],
+};
+
+const dlg2 = $('#dlg2');
+const dlg2Form = $('#dlg2Form');
+dlg2.addEventListener('click', (ev) => {
+  if (ev.target === dlg2 || ev.target.closest('[data-fechar]')) dlg2.close();
+});
+
+/** Cadastro de moeda num segundo diálogo, por cima do formulário aberto. */
+function abrirMoeda(aoCadastrar) {
+  dlg2Form.innerHTML =
+    '<div class="dlg-topo"><h2>Nova moeda</h2>' +
+    '<button type="button" class="fechar" data-fechar aria-label="Fechar">×</button></div>' +
+    '<label class="campo"><span>Código ISO 4217 (3 letras)</span><input id="mCod" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="Ex.: GBP"></label>' +
+    '<div class="grade2">' +
+      '<label class="campo"><span>Casas decimais</span><select id="mCasas">' +
+        [0, 1, 2, 3, 4].map((c) => '<option' + (c === 2 ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label>' +
+      '<label class="campo"><span>Símbolo</span><input id="mSimb" autocomplete="off" placeholder="Ex.: £"></label>' +
+    '</div>' +
+    '<p class="dica">Ex.: BRL, USD e EUR têm 2 casas; JPY e CLP têm 0.</p>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes"><button type="submit" class="primario">Cadastrar</button></div>';
+  dlg2Form.onsubmit = (ev) => {
+    ev.preventDefault();
+    try {
+      const moeda = $('#mCod', dlg2Form).value.trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(moeda)) throw new Error('Use o código de 3 letras (ex.: GBP)');
+      if (moedas().some((m) => m.moeda === moeda)) throw new Error(moeda + ' já está cadastrada');
+      const dados = { moeda: moeda, casas_decimais: Number($('#mCasas', dlg2Form).value), simbolo: $('#mSimb', dlg2Form).value.trim() || moeda };
+      dlg2.close();
+      enfileirar('moeda', dados);
+      toast(moeda + ' cadastrada');
+      if (aoCadastrar) aoCadastrar(moeda);
+    } catch (e) {
+      $('.erro[data-erro]', dlg2Form).textContent = e.message;
+    }
+  };
+  dlg2.showModal();
+  const cod = $('#mCod', dlg2Form);
+  cod.focus();
+  cod.addEventListener('input', () => {
+    const k = MOEDAS_CONHECIDAS[cod.value.trim().toUpperCase()];
+    if (k) { $('#mCasas', dlg2Form).value = String(k[0]); $('#mSimb', dlg2Form).value = k[1]; }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Menu e fila
+
+function abrirMenu() {
+  abrirDialogo('Menu',
+    '<div class="menu">' +
+      '<button type="button" data-m="importar">Importar extrato</button>' +
+      '<button type="button" data-m="pagamento">Registrar pagamento</button>' +
+      '<button type="button" data-m="grupos">Grupos (' + grupos.length + ')</button>' +
+      '<button type="button" data-m="nome">Trocar meu nome (' + esc(eu()) + ')</button>' +
+    '</div>' +
+    '<p class="dica">Versão ' + VERSAO + '</p>');
+  $('.menu', dlgForm).onclick = (ev) => {
+    const b = ev.target.closest('[data-m]');
+    if (!b) return;
+    const m = b.dataset.m;
+    if (m === 'importar') abrirImportar();
+    else if (m === 'pagamento') abrirPagamento();
+    else if (m === 'grupos') abrirGrupos();
+    else if (m === 'nome') { fecharDialogo(); gravarG('eu', ''); render(); }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Grupos: trocar, adicionar (colando o link de convite) e remover deste aparelho
+
+function nomeGrupo(g) { return g.nome || 'Grupo sem nome'; }
+
+function abrirGrupos() {
+  const atual = grupoAtual();
+  const filas = filasPorGrupo();
+  abrirDialogo('Grupos',
+    '<div class="menu" id="gLista">' + grupos.map((g) =>
+      '<div class="grupo-linha">' +
+        '<button type="button" class="grupo-nome" data-abrir="' + esc(g.id) + '"' + (g === atual ? ' aria-current="true"' : '') + '>' +
+          esc(nomeGrupo(g)) + (g === atual ? ' <span class="etiqueta local">aberto</span>' : '') +
+          (filas[g.id] ? ' <span class="etiqueta pendente">' + filas[g.id] + ' na fila</span>' : '') + '</button>' +
+        '<button type="button" class="perigo" data-remover="' + esc(g.id) + '" aria-label="Remover ' + esc(nomeGrupo(g)) + ' deste aparelho">Remover</button>' +
+      '</div>').join('') + '</div>' +
+    '<label class="campo"><span>Adicionar grupo: cole o link de convite</span>' +
+      '<input id="gConvite" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…#t=…"></label>' +
+    '<p class="dica">Remover tira o grupo só deste aparelho; os lançamentos continuam na planilha. Para voltar, abra o link de novo.</p>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes"><button type="submit" class="primario">Adicionar</button></div>',
+    () => {
+      const c = lerConvite($('#gConvite', dlgForm).value);
+      if (!c.token) throw new Error('Link inválido: falta o trecho #t=…');
+      if (!c.api && !API_URL) throw new Error('O link não traz o endereço do servidor (api=…).');
+      fecharDialogo();
+      entrarPeloConvite(c);
+    });
+  $('#gLista', dlgForm).onclick = async (ev) => {
+    const abrir = ev.target.closest('[data-abrir]');
+    const remover = ev.target.closest('[data-remover]');
+    if (abrir) {
+      fecharDialogo();
+      await abrirGrupo(abrir.dataset.abrir);
+    } else if (remover) {
+      const g = grupos.find((x) => x.id === remover.dataset.remover);
+      const n = filas[g.id] || 0;
+      const aviso = 'Remover ' + nomeGrupo(g) + ' deste aparelho?' +
+        (n ? '\n\n' + plural(n, 'lançamento ainda não enviado será perdido', 'lançamentos ainda não enviados serão perdidos') + '.' : '');
+      if (!confirm(aviso)) return;
+      fecharDialogo();
+      await removerGrupo(g.id);
+    }
+  };
+}
+
+/** Abre outro grupo depois que a sincronização em curso terminar (ela grava no grupo aberto). */
+async function abrirGrupo(id) {
+  if (sincronizando) {
+    toast('Terminando a sincronização…');
+    await sincronizando;
+  }
+  atualId = id;
+  gravar(LS.atual, id);
+  estado = lerG('estado', null);
+  fila = lerG('fila', []);
+  enviados = [];
+  filtroPendentes = false;
+  rede = 'ocioso';
+  erroRede = '';
+  window.scrollTo(0, 0);
+  render();
+  atualizar();
+}
+
+async function removerGrupo(id) {
+  if (sincronizando) await sincronizando;
+  ['estado', 'fila', 'eu', 'moeda'].forEach((nome) => apagar(chaveGrupo(id, nome)));
+  grupos = grupos.filter((g) => g.id !== id);
+  gravar(LS.grupos, grupos);
+  if (atualId === id || !grupos.some((g) => g.id === atualId)) {
+    await abrirGrupo(grupos.length ? grupos[0].id : '');
+  } else {
+    render();
+  }
+}
+
+/** Convite {token, api} lido do link: inclui (ou atualiza) o grupo e o abre. */
+async function entrarPeloConvite(c) {
+  const api = c.api || API_URL;
+  if (sincronizando) await sincronizando;
+  const r = incluirGrupo(grupos, { token: c.token, api: api }, uuid());
+  grupos = r.grupos;
+  gravar(LS.grupos, grupos);
+  if (r.trocouToken) gravar(chaveGrupo(r.id, 'estado'), null);
+  await abrirGrupo(r.id);
+  if (!r.novo) toast(r.trocouToken ? 'Link atualizado' : 'Este grupo já estava no aparelho');
+}
+
+// ---------------------------------------------------------------------------
+// Importar extrato e confirmar pendentes
+
+function dataBr(iso) { return String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7); }
+
+/** Linha com caixa de seleção (i < 0 = sem caixa, só informativa). */
+function candHtml(i, marcado, titulo, sub, valor, valorSub) {
+  return '<label class="cand">' +
+    (i >= 0 ? '<input type="checkbox" data-i="' + i + '"' + (marcado ? ' checked' : '') + '>' : '') +
+    '<span class="cand-txt"><b>' + esc(titulo) + '</b><small>' + esc(sub) + '</small></span>' +
+    '<span class="cand-v">' + esc(valor) + (valorSub ? '<small>' + esc(valorSub) + '</small>' : '') + '</span></label>';
+}
+
+function saidaHtml(s, i) {
+  return candHtml(i, s.sugerida, s.descricao || '—',
+    dataBr(s.data) + (s.detalhe && s.detalhe !== 'CARD' ? ' · ' + (s.detalhe === 'TRANSFER' ? 'transferência' : s.detalhe.toLowerCase()) : ''),
+    dinheiro(s.valor, s.moeda), s.moeda !== s.moedaSaldo ? 'pago com ' + dinheiro(s.valorSaldo, s.moedaSaldo) : '');
+}
+
+function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+
+function abrirImportar() {
+  const quem = eu();
+  const nomes = participantes();
+  let novas = [];
+  abrirDialogo('Importar extrato',
+    '<p class="dica">Por enquanto: extrato CSV da Wise. O arquivo é lido só neste aparelho; ao servidor vão apenas as compras que você marcar, como pendentes.</p>' +
+    '<label class="arquivo">Escolher arquivo<input type="file" id="iArquivo" accept=".csv,text/csv"></label>' +
+    '<div id="iResultado" class="campo"></div>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes oculto" id="iAcoes"><button type="submit" class="primario" id="iCriar">Criar pendentes</button></div>',
+    salvar);
+  const resultado = $('#iResultado'), erro = $('.erro[data-erro]', dlgForm);
+
+  $('#iArquivo').onchange = async (ev) => {
+    const arq = ev.target.files[0];
+    if (!arq) return;
+    erro.textContent = '';
+    let ext;
+    try {
+      ext = lerExtratoWise(await arq.text(), casas);
+    } catch (e) {
+      erro.textContent = e.message;
+      resultado.innerHTML = '';
+      $('#iAcoes').classList.add('oculto');
+      return;
+    } finally {
+      ev.target.value = ''; // permite escolher o mesmo arquivo de novo
+    }
+    const casados = casarExtrato(ext.saidas, pernasDesembolso(lancamentosVisiveis(), quem));
+    novas = ext.saidas.filter((s, i) => !casados[i]);
+    const ja = ext.saidas.filter((s, i) => casados[i]);
+    resultado.innerHTML =
+      '<p class="nota">' + esc(ext.origem + ': ' + plural(ext.saidas.length, 'saída', 'saídas') + ' · ' +
+        plural(novas.length, 'nova', 'novas') + ' · ' + plural(ja.length, 'já lançada', 'já lançadas') +
+        (ext.ignoradas ? ' · ' + plural(ext.ignoradas, 'entrada ou conversão ignorada', 'entradas e conversões ignoradas') : '')) + '</p>' +
+      (novas.length
+        ? '<span class="rotulo">Ainda não lançadas <button type="button" class="link link-dir" data-marcar></button></span>' +
+          '<div class="cands" id="iNovas">' + novas.map((s, i) => saidaHtml(s, i)).join('') + '</div>' +
+          '<div class="campo"><span class="rotulo">Dividir entre</span>' + chips('participantes', nomes, nomes, true) + '</div>' +
+          '<p class="dica" id="iNota"></p>'
+        : '<p class="vazio">Nenhuma compra nova: tudo já está lançado.</p>') +
+      (ja.length ? '<details><summary>Ver ' + plural(ja.length, 'já lançada', 'já lançadas') + '</summary><div class="cands">' +
+        ja.map((s) => saidaHtml(s, -1)).join('') + '</div></details>' : '');
+    $('#iAcoes').classList.toggle('oculto', !novas.length);
+    atualizarSelecao();
+  };
+
+  function selecionadas() {
+    return $$('#iNovas input[data-i]', dlgForm).filter((c) => c.checked).map((c) => novas[Number(c.dataset.i)]);
+  }
+  function moedasACadastrar(sel) {
+    const cadastradas = moedas().map((m) => m.moeda);
+    const faltam = [];
+    sel.forEach((s) => [s.moeda, s.moedaSaldo].forEach((c) => {
+      if (cadastradas.indexOf(c) < 0 && faltam.indexOf(c) < 0) faltam.push(c);
+    }));
+    return faltam;
+  }
+  function atualizarSelecao() {
+    const marcar = $('[data-marcar]', dlgForm);
+    if (!marcar) return;
+    const sel = selecionadas();
+    marcar.textContent = sel.length === novas.length ? 'desmarcar todas' : 'marcar todas';
+    $('#iCriar').textContent = sel.length ? 'Criar ' + plural(sel.length, 'pendente', 'pendentes') : 'Marque ao menos uma';
+    $('#iCriar').disabled = !sel.length;
+    const faltam = moedasACadastrar(sel);
+    $('#iNota').textContent = 'Entram como pendentes, pagas por ' + quem + '; confira e confirme depois.' +
+      (faltam.length ? ' Moeda nova a cadastrar: ' + faltam.map((c) => rotuloMoeda(c) + (rotuloMoeda(c) === c ? '' : ' (' + c + ')')).join(', ') + '.' : '');
+  }
+  resultado.addEventListener('change', atualizarSelecao);
+  resultado.addEventListener('click', (ev) => {
+    if (!ev.target.closest('[data-marcar]')) return;
+    const todas = selecionadas().length === novas.length;
+    $$('#iNovas input[data-i]', dlgForm).forEach((c) => { c.checked = !todas; });
+    atualizarSelecao();
+  });
+
+  function salvar() {
+    const sel = selecionadas();
+    if (!sel.length) throw new Error('Marque ao menos uma compra');
+    const parts = lerChips(dlgForm, 'participantes');
+    if (!parts.length) throw new Error('Escolha entre quem dividir');
+    const ops = moedasACadastrar(sel).map((c) => {
+      const m = infoMoeda(c);
+      return ['moeda', { moeda: c, casas_decimais: m.casas_decimais, simbolo: m.simbolo }];
+    });
+    sel.forEach((s) => ops.push(['criar', {
+      id: s.ref, tipo: 'despesa', data: s.data, descricao: s.descricao, categoria: '',
+      moeda: s.moeda, valor: s.valor,
+      fontes: s.moeda !== s.moedaSaldo ? s.moedaSaldo + ':' + s.valorSaldo : '', // a linha do extrato é a fonte
+      pagador: quem, participantes: parts.join(';'), pesos: '', moeda_paga: '', valor_pago: '',
+      status: 'pendente', origem: 'extrato',
+    }]));
+    fecharDialogo();
+    filtroPendentes = true;
+    enfileirarVarios(ops);
+    window.scrollTo(0, 0);
+    toast(plural(sel.length, 'pendente criada', 'pendentes criadas') + '. Confira e confirme.');
+  }
+}
+
+function abrirConfirmarPendentes() {
+  const ps = lancamentosVisiveis().filter((l) => l.status === 'pendente');
+  abrirDialogo('Confirmar pendentes',
+    '<p class="dica">Só lançamentos confirmados entram no acerto. Para ajustar participantes ou categoria, feche e toque no lançamento na lista.</p>' +
+    '<span class="rotulo">' + plural(ps.length, 'pendente', 'pendentes') + ' <button type="button" class="link link-dir" data-marcar></button></span>' +
+    '<div class="cands" id="cLista">' + ps.map((l, i) => {
+      const despesa = l.tipo === 'despesa';
+      const vs = valoresItem(l);
+      return candHtml(i, true,
+        despesa ? (l.descricao || maiuscula(l.categoria) || 'Despesa') : l.pagador + ' pagou ' + lista(l.participantes)[0],
+        dataBr(l.data) + (despesa ? ' · ' + l.pagador + ' pagou para ' + textoParaQuem(l.pagador, lista(l.participantes), participantes(), l.pesos) : ''),
+        vs.valor, '');
+    }).join('') + '</div>' +
+    '<p class="erro" data-erro role="alert"></p>' +
+    '<div class="dlg-acoes"><button type="submit" class="primario" id="cBotao">Confirmar</button></div>',
+    () => {
+      const ids = marcados().map((l) => l.id);
+      if (!ids.length) throw new Error('Marque ao menos um lançamento');
+      fecharDialogo();
+      if (ids.length === ps.length) filtroPendentes = false;
+      enfileirar('confirmar', { ids: ids });
+      toast(plural(ids.length, 'lançamento confirmado', 'lançamentos confirmados'));
+    });
+  const caixas = $$('#cLista input[data-i]', dlgForm);
+  const marcados = () => caixas.filter((c) => c.checked).map((c) => ps[Number(c.dataset.i)]);
+  const atualizarSel = () => {
+    const n = marcados().length;
+    $('[data-marcar]', dlgForm).textContent = n === ps.length ? 'desmarcar todos' : 'marcar todos';
+    $('#cBotao').textContent = n ? 'Confirmar ' + n : 'Marque ao menos um';
+    $('#cBotao').disabled = !n;
+  };
+  $('#cLista').addEventListener('change', atualizarSel);
+  $('[data-marcar]', dlgForm).onclick = () => {
+    const todos = marcados().length === ps.length;
+    caixas.forEach((c) => { c.checked = !todos; });
+    atualizarSel();
+  };
+  atualizarSel();
+}
+
+function descreverItemFila(it) {
+  const d = it.dados;
+  if (it.acao === 'moeda') return 'Cadastrar moeda ' + d.moeda;
+  if (it.acao === 'confirmar') return 'Confirmar ' + (d.ids || []).length + ' lançamento(s)';
+  if (it.acao === 'excluir') return 'Excluir lançamento';
+  const rot = { criar: 'Novo', editar: 'Edição' }[it.acao] || it.acao;
+  return rot + ': ' + (d.descricao || d.tipo) + (d.valor ? ' · ' + dinheiro(Number(d.valor), d.moeda) : '');
+}
+
+function abrirFila() {
+  abrirDialogo('Não sincronizados',
+    (fila.length ? '<div class="menu" id="filaLista">' + fila.map((it) =>
+      '<div class="fila-item"><div>' + esc(descreverItemFila(it)) + '</div>' +
+      (it.erro ? '<p class="erro">' + esc(it.erro) + '</p><div class="grade2" style="margin-top:6px">' +
+        '<button type="button" data-tentar="' + esc(it.uid) + '">Tentar de novo</button>' +
+        '<button type="button" class="perigo" data-descartar="' + esc(it.uid) + '">Descartar</button></div>'
+        : '<p class="dica">Aguardando conexão</p>') +
+      '</div>').join('') + '</div>'
+      : '<p class="nota">Tudo sincronizado.</p>') +
+    '<p class="dica">Estes lançamentos ficam guardados neste aparelho até chegarem à planilha.</p>' +
+    (fila.some((it) => !it.erro) ? '<div class="dlg-acoes"><button type="button" class="primario" data-sinc>Sincronizar agora</button></div>' : ''));
+  const sinc = $('[data-sinc]', dlgForm);
+  if (sinc) sinc.onclick = () => { fecharDialogo(); atualizar(); };
+  const box = $('#filaLista');
+  if (!box) return;
+  box.onclick = (ev) => {
+    const t = ev.target.closest('[data-tentar]');
+    const x = ev.target.closest('[data-descartar]');
+    if (t) {
+      const it = fila.find((i) => i.uid === t.dataset.tentar);
+      if (it) delete it.erro;
+      gravarG('fila', fila);
+      fecharDialogo();
+      atualizar();
+    } else if (x && confirm('Descartar esta operação? Ela não será enviada.')) {
+      fila = fila.filter((i) => i.uid !== x.dataset.descartar);
+      gravarG('fila', fila);
+      render();
+      abrirFila();
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Renderização principal
+
+const raiz = $('#raiz');
+
+function render() {
+  if (!grupoAtual()) return renderConvite();
+  if (!estado) return renderCarregando();
+  if (participantes().indexOf(eu()) < 0) return renderEscolherNome();
+  renderPrincipal();
+}
+
+/** Nas telas de entrada, com mais de um grupo: atalho para os outros (ex.: link deste vencido). */
+function linkOutrosGrupos() {
+  return grupos.length > 1 ? '<p><button type="button" class="link" id="telaGrupos">Outros grupos</button></p>' : '';
+}
+function ligarOutrosGrupos() {
+  const b = $('#telaGrupos');
+  if (b) b.onclick = abrirGrupos;
+}
+
+function renderConvite() {
+  raiz.innerHTML = '<div class="tela"><h1>Despesas</h1>' +
+    '<p class="nota">Abra o link de convite que o grupo compartilhou.</p>' +
+    '<p class="nota">No app instalado na tela de início, copie o link de convite e cole aqui:</p>' +
+    '<input id="convite" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…#t=…">' +
+    '<p class="nota" id="conviteErro" hidden></p>' +
+    '<button type="button" class="primario" id="entrar">Entrar</button></div>';
+  $('#entrar').onclick = () => {
+    const c = lerConvite($('#convite').value);
+    const erro = $('#conviteErro');
+    if (!c.token || (!c.api && !API_URL)) {
+      erro.textContent = c.token ? 'O link não traz o endereço do servidor (api=…).' : 'Link inválido: falta o trecho #t=…';
+      erro.hidden = false;
+      return;
+    }
+    entrarPeloConvite(c);
+  };
+}
+
+function renderCarregando() {
+  const g = grupoAtual();
+  raiz.innerHTML = '<div class="tela"><h1>' + esc(g.nome || 'Despesas') + '</h1><p class="nota">' +
+    (rede === 'offline' ? 'Sem conexão. Conecte-se uma vez para carregar o grupo.'
+      : rede === 'erro' ? esc(erroRede) : 'Carregando…') + '</p>' +
+    (rede === 'offline' || rede === 'erro' ? '<button type="button" id="tentar">Tentar de novo</button>' : '') +
+    linkOutrosGrupos() + '</div>';
+  const b = $('#tentar');
+  if (b) b.onclick = () => atualizar();
+  ligarOutrosGrupos();
+}
+
+function renderEscolherNome() {
+  raiz.innerHTML = '<div class="tela"><h1>' + esc(estado.nome_viagem || 'Despesas') + '</h1>' +
+    '<p class="nota">Quem é você? O nome fica registrado nos lançamentos que você fizer.</p>' +
+    '<div class="lista-nomes">' + participantes().map((n) =>
+      '<button type="button" data-nome="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>' +
+    linkOutrosGrupos() + '</div>';
+  $('.lista-nomes').onclick = (ev) => {
+    const b = ev.target.closest('[data-nome]');
+    if (!b) return;
+    gravarG('eu', b.dataset.nome);
+    render();
+  };
+  ligarOutrosGrupos();
+}
+
+/** Linha de valor (direita): o principal e, abaixo, o complemento (fontes ou quanto foi quitado). */
+function valoresItem(l) {
+  const v = Number(l.valor);
+  if (l.tipo === 'acerto_cruzado') {
+    return { valor: dinheiro(Number(l.valor_pago), l.moeda_paga), sub: 'quitou ' + dinheiro(v, l.moeda) };
+  }
+  const fontes = l.tipo === 'despesa' ? lerFontes(l.fontes) : [];
+  return {
+    valor: dinheiro(v, l.moeda),
+    sub: fontes.length ? 'pago com ' + fontes.map((f) => dinheiro(f.valor, f.moeda)).join(' + ') : '',
+  };
+}
+
+function itemHtml(l) {
+  const parts = lista(l.participantes);
+  const despesa = l.tipo === 'despesa';
+  let titulo, sub;
+  if (despesa) {
+    const cat = maiuscula(l.categoria);
+    const repete = cat && l.descricao.trim().toLowerCase() === l.categoria.toLowerCase();
+    titulo = l.descricao
+      ? esc(l.descricao) + (cat && !repete ? '<span class="item-cat"> – ' + esc(cat) + '</span>' : '')
+      : esc(cat || 'Despesa');
+    sub = esc(l.pagador) + ' pagou para ' + esc(textoParaQuem(l.pagador, parts, participantes(), l.pesos));
+  } else {
+    // Pagamento e acerto cruzado: ressarcimento de quem pagou para quem recebeu.
+    titulo = esc(l.pagador) + ' pagou ' + esc(parts[0] || '');
+    sub = esc(l.descricao);
+  }
+  const etiquetas = [];
+  if (l.status === 'pendente') etiquetas.push('<span class="etiqueta pendente">pendente</span>');
+  if (l._erro) etiquetas.push('<span class="etiqueta erro">erro ao sincronizar</span>');
+  else if (l._local) etiquetas.push('<span class="etiqueta local">não sincronizado</span>');
+  const esq = [sub].concat(etiquetas).filter(Boolean).join(' ');
+  const vs = valoresItem(l);
+  return '<button type="button" class="item' + (despesa ? '' : ' repasse') + '" data-id="' + esc(l.id) + '">' +
+    '<span class="item-linha"><span class="item-titulo">' + titulo + '</span>' +
+      '<span class="item-valor">' + esc(vs.valor) + '</span></span>' +
+    (esq || vs.sub ? '<span class="item-linha"><span class="item-sub">' + esq + '</span>' +
+      (vs.sub ? '<span class="item-sub dir">' + esc(vs.sub) + '</span>' : '') + '</span>' : '') +
+    '</button>';
+}
+
+function renderLista() {
+  let ls = lancamentosVisiveis();
+  if (filtroPendentes) ls = ls.filter((l) => l.status === 'pendente');
+  if (!ls.length) {
+    return '<p class="vazio">' + (filtroPendentes ? 'Nenhum lançamento pendente.' : 'Nenhum lançamento ainda. Toque em “+ Nova despesa”.') + '</p>';
+  }
+  let html = filtroPendentes ? '<button type="button" class="primario largo" id="btnLote">Confirmar pendentes</button>' : '';
+  let dia = null;
+  ls.forEach((l) => {
+    if (l.data !== dia) {
+      if (dia !== null) html += '</div>';
+      dia = l.data;
+      html += '<div class="dia">' + esc(dataCurta(dia)) + '</div><div class="grupo">';
+    }
+    html += itemHtml(l);
+  });
+  return html + '</div>';
+}
+
+/** Uma dívida: nomes à esquerda e um botão por moeda, que abre o pagamento já preenchido. */
+function dividaHtml(de, para, valores) {
+  return '<div class="divida"><span class="divida-nomes">' + esc(deve(de, para)) + '</span><span class="divida-valores">' +
+    Object.keys(valores).map((m) => '<button type="button" class="pilula" data-pagar="' +
+      esc(JSON.stringify({ de: de, para: para, moeda: m, valor: valores[m] })) + '">' + esc(dinheiro(valores[m], m)) + '</button>').join('') +
+    '</span></div>';
+}
+
+function deve(de, para) { return de + ' deve a ' + para; }
+
+function renderAcerto() {
+  const tpm = estado.transferencias_por_moeda || {};
+  const comDivida = Object.keys(tpm).filter((m) => tpm[m].length);
+  // Com uma só moeda as duas visões são iguais: sem alternador.
+  const visao = comDivida.length > 1 ? ler(LS.visao, 'moeda') : 'moeda';
+  let html = '';
+  if (visao === 'par') {
+    const pares = estado.por_par || [];
+    if (pares.length) html = '<div class="cartao">' + pares.map((p) => dividaHtml(p.de, p.para, p.valores)).join('') + '</div>';
+  } else {
+    comDivida.forEach((m) => {
+      html += '<div class="cartao">' + (comDivida.length > 1 ? '<h3>Em ' + esc(rotuloMoeda(m)) + '</h3>' : '') +
+        tpm[m].map((t) => dividaHtml(t.de, t.para, { [m]: t.valor })).join('') + '</div>';
+    });
+  }
+  html = html ? '<p class="dica">Toque numa dívida para registrar o pagamento.</p>' + html
+    : '<p class="vazio">Ninguém deve nada a ninguém.</p>';
+
+  const spm = estado.saldos_por_moeda || {};
+  const ms = Object.keys(spm);
+  let saldos = '';
+  if (ms.length) {
+    saldos = '<details><summary>Saldos por pessoa</summary><table class="saldos"><thead><tr><th>Pessoa</th>' +
+      ms.map((m) => '<th>' + esc(rotuloMoeda(m)) + '</th>').join('') + '</tr></thead><tbody>' +
+      participantes().map((n) => '<tr><td>' + esc(n) + '</td>' + ms.map((m) => {
+        const v = spm[m][n] || 0;
+        return '<td class="' + (v > 0 ? 'pos' : v < 0 ? 'neg' : '') + '">' + esc(formatarNumero(v, casas(m))) + '</td>';
+      }).join('') + '</tr>').join('') +
+      '</tbody></table><p class="dica">Positivo = tem a receber. Cada moeda é um livro separado.</p></details>';
+  }
+  const naoSinc = fila.filter((it) => it.acao !== 'moeda').length;
+  return (comDivida.length > 1 ? '<div class="segmentado" role="group" aria-label="Visão">' +
+      '<button type="button" data-visao="moeda" aria-pressed="' + (visao !== 'par') + '">Por moeda</button>' +
+      '<button type="button" data-visao="par" aria-pressed="' + (visao === 'par') + '">Por par</button>' +
+    '</div>' : '') +
+    (naoSinc ? '<p class="nota">Ainda não inclui ' + (naoSinc > 1 ? naoSinc + ' lançamentos não sincronizados' : '1 lançamento não sincronizado') + '.</p>' : '') +
+    html + saldos;
+}
+
+/** Indicador discreto de sincronização: {classe, texto, rotulo acessível}. */
+function estadoSync() {
+  const comErro = fila.filter((it) => it.erro).length;
+  if (comErro) return { classe: 'falha', texto: comErro + ' com erro', rotulo: 'Lançamentos com erro de sincronização. Toque para ver.' };
+  if (rede === 'sincronizando') return { classe: 'ocupado', texto: fila.length ? 'enviando ' + fila.length : 'atualizando', rotulo: 'Sincronizando' };
+  if (fila.length) return { classe: 'aviso', texto: fila.length + ' na fila', rotulo: fila.length + ' não sincronizado(s). Toque para ver.' };
+  if (rede === 'offline') return { classe: 'aviso', texto: 'offline', rotulo: 'Sem conexão. Toque para tentar de novo.' };
+  if (rede === 'erro') return { classe: 'falha', texto: 'erro', rotulo: 'Erro: ' + erroRede + '. Toque para tentar de novo.' };
+  const hora = estado.atualizado_em
+    ? new Date(estado.atualizado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  return { classe: '', texto: hora, rotulo: 'Atualizado às ' + hora + '. Toque para atualizar.' };
+}
+
+function renderPrincipal() {
+  const totais = estado.totais_por_moeda || {};
+  const txtTotais = Object.keys(totais).map((m) => dinheiro(totais[m], m, { semDecimais: true })).join(' · ');
+  const pend = lancamentosVisiveis().filter((l) => l.status === 'pendente').length;
+  if (!pend) filtroPendentes = false;
+  const sync = estadoSync();
+
+  const detalhes = document.querySelector('details');
+  const detalhesAberto = detalhes && detalhes.open;
+  const rolagem = window.scrollY;
+
+  raiz.innerHTML =
+    '<header class="topo">' +
+      '<div class="topo-linha"><h1>' + (grupos.length > 1
+        ? '<button type="button" class="titulo-grupo" id="btnGrupo" aria-label="Trocar de grupo (' + esc(estado.nome_viagem || 'Despesas') + ')">' +
+          esc(estado.nome_viagem || 'Despesas') + ' <span aria-hidden="true">▾</span></button>'
+        : esc(estado.nome_viagem || 'Despesas')) + '</h1>' +
+      '<button type="button" class="sync ' + sync.classe + '" id="btnSync" aria-label="' + esc(sync.rotulo) + '">' + esc(sync.texto) + '</button>' +
+      '<button type="button" class="icone" id="btnMenu" aria-label="Menu">☰</button></div>' +
+      '<div class="totais" aria-label="Total desembolsado por moeda">' + (txtTotais ? esc(txtTotais) : '—') + '</div>' +
+    '</header>' +
+    '<main>' +
+      ((estado.invalidos || []).length ? '<div class="aviso-caixa">' + estado.invalidos.length +
+        ' linha(s) da planilha com erro foram ignoradas no cálculo. Veja a aba Resumo.</div>' : '') +
+      '<section class="bloco"><h2>Lançamentos<span class="espaco"></span>' +
+        (pend ? '<button type="button" class="selo' + (filtroPendentes ? ' ativo' : '') + '" id="seloPend" aria-pressed="' + filtroPendentes + '">' +
+          pend + ' pendente' + (pend > 1 ? 's' : '') + '</button>' : '') +
+      '</h2>' + renderLista() + '</section>' +
+      '<section class="bloco" id="blocoAcerto"><h2>Acerto de contas</h2>' + renderAcerto() + '</section>' +
+    '</main>' +
+    '<button type="button" class="primario fab" id="fab">+ Nova despesa</button>';
+
+  if (detalhesAberto) { const d = document.querySelector('details'); if (d) d.open = true; }
+  window.scrollTo(0, rolagem);
+}
+
+// Delegação de eventos da tela principal
+raiz.addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (t.closest('#fab')) return abrirDespesa();
+  if (t.closest('#btnMenu')) return abrirMenu();
+  if (t.closest('#btnGrupo')) return abrirGrupos();
+  if (t.closest('#btnSync')) return fila.length ? abrirFila() : atualizar();
+  if (t.closest('#seloPend')) { filtroPendentes = !filtroPendentes; return render(); }
+  if (t.closest('#btnLote')) return abrirConfirmarPendentes();
+  const visao = t.closest('[data-visao]');
+  if (visao) { gravar(LS.visao, visao.dataset.visao); return render(); }
+  const divida = t.closest('.divida');
+  if (divida) {
+    // Toque no valor abre aquela moeda; toque na linha abre se a dívida tiver uma moeda só.
+    const valores = $$('[data-pagar]', divida);
+    const alvo = t.closest('[data-pagar]') || (valores.length === 1 ? valores[0] : null);
+    if (alvo) abrirPagamento(null, JSON.parse(alvo.dataset.pagar));
+    return;
+  }
+  const item = t.closest('.item');
+  if (item) {
+    const l = lancamentosVisiveis().find((x) => x.id === item.dataset.id);
+    if (!l) return;
+    if (l.tipo === 'despesa') abrirDespesa(l);
+    else if (l.tipo === 'pagamento') abrirPagamento(l);
+    else abrirAcerto(l);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Inicialização
+
+/** Link de convite aberto no navegador: inclui o grupo e o abre. true se havia convite. */
+function lerFragmento() {
+  if (!location.hash) return false;
+  const c = lerConvite(location.hash);
+  if (c.token || c.api) history.replaceState(null, '', location.pathname + location.search);
+  if (!c.token || !(c.api || API_URL)) return false;
+  entrarPeloConvite(c);
+  return true;
+}
+
+if (!lerFragmento()) {
+  render();
+  atualizar();
+}
+// Link de outro grupo aberto com o app já aberto na mesma aba: só o fragmento muda.
+window.addEventListener('hashchange', lerFragmento);
+window.addEventListener('online', () => atualizar());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') atualizar();
+});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
