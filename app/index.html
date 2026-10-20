@@ -263,7 +263,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.4.0';
+const VERSAO = '1.5.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -470,7 +470,7 @@ function lerExtratoWise(texto, casasDe) {
   if (!linhas.length) throw new Error('Arquivo vazio');
   const cab = linhas[0].map((s) => s.trim());
   if (['TransferWise ID', 'Date', 'Amount', 'Currency'].some((n) => cab.indexOf(n) < 0)) {
-    throw new Error('Formato não reconhecido. Por enquanto o app lê o extrato CSV da Wise.');
+    throw new Error('Formato não reconhecido. O app lê o OFX do Nubank e do Banco do Brasil e o CSV da Wise.');
   }
   const campo = (l, nome) => { const i = cab.indexOf(nome); return i < 0 ? '' : String(l[i] || '').trim(); };
   const vistos = {};
@@ -503,6 +503,100 @@ function lerExtratoWise(texto, casasDe) {
     });
   });
   return { origem: 'Wise', saidas: saidas, ignoradas: ignoradas };
+}
+
+/** Bytes do arquivo -> texto: UTF-8 quando válido; senão Windows-1252 (o OFX do BB declara CHARSET:1252). */
+function decodificarExtrato(bytes) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (e) {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+}
+
+/** Valor de <TAG> no trecho OFX, com ou sem a tag de fechamento (SGML 1.x ou XML 2.x). */
+function campoOFX(bloco, tag) {
+  const m = new RegExp('<' + tag + '>\\s*([^<\\r\\n]*)', 'i').exec(bloco);
+  return m ? m[1].trim() : '';
+}
+
+/** "20261001120000[-3:BRT]" -> "2026-10-01"; '' se não reconhecer. */
+function dataOFX(texto) {
+  const m = /^(\d{4})(\d{2})(\d{2})/.exec(String(texto || '').trim());
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12 || Number(m[3]) < 1 || Number(m[3]) > 31) return '';
+  return m[1] + '-' + m[2] + '-' + m[3];
+}
+
+/** TRNAMT -> unidades mínimas sem sinal. O OFX usa ponto decimal, mas há exportadores que mandam vírgula. */
+function decimalOFX(texto, casas) {
+  let v = String(texto == null ? '' : texto).replace(/\s/g, '');
+  if (v.indexOf(',') >= 0) v = v.indexOf('.') >= 0 ? v.replace(/\./g, '').replace(',', '.') : v.replace(',', '.');
+  return decimalPonto(v, casas);
+}
+
+/** Banco do OFX, para o id dos lançamentos: 'nubank', 'bb' ou 'ofx' (outro banco). */
+function bancoOFX(texto) {
+  const org = campoOFX(texto, 'ORG').toLowerCase();
+  const num = Number(campoOFX(texto, 'BANKID') || campoOFX(texto, 'FID'));
+  if (/nubank|nu pagamentos/.test(org) || num === 260) return 'nubank';
+  if (/banco do brasil/.test(org) || num === 1) return 'bb';
+  return 'ofx';
+}
+
+/**
+ * Extrato OFX (Nubank, Banco do Brasil…) -> { origem, saidas, ignoradas }, no formato de lerExtratoWise.
+ * Só as saídas (TRNAMT negativo) viram candidatas, na moeda do extrato (CURDEF); vêm marcadas as do
+ * cartão de crédito e as compras no débito. Porta do leitor do importador do controle financeiro:
+ * ref = <banco>:<ACCTID>:<FITID>, o fitid de lá com o banco na frente, e o FITID repetido no mesmo
+ * extrato (o BB monta o FITID com data, sentido e valor) ganha #2, #3… na ordem do arquivo.
+ */
+function lerExtratoOFX(texto, casasDe) {
+  const t = String(texto || '');
+  if (!/<OFX>/i.test(t)) throw new Error('Arquivo OFX sem o bloco <OFX>');
+  const banco = bancoOFX(t);
+  const saidas = [];
+  let ignoradas = 0;
+  t.split(/(?=<STMTRS>|<CCSTMTRS>)/i).forEach((bloco) => {
+    if (!/<STMTTRN>/i.test(bloco)) return;
+    const cartao = /^\s*<CCSTMTRS>/i.test(bloco);
+    const acctid = campoOFX(bloco, 'ACCTID') || 'SEM_CONTA';
+    const moeda = (campoOFX(bloco, 'CURDEF') || 'BRL').toUpperCase();
+    const vezes = {};
+    const re = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
+    let m;
+    while ((m = re.exec(bloco))) {
+      const trn = m[1];
+      const valorTxt = campoOFX(trn, 'TRNAMT').replace(/\s/g, '');
+      const data = dataOFX(campoOFX(trn, 'DTPOSTED'));
+      const memo = campoOFX(trn, 'MEMO'), nome = campoOFX(trn, 'NAME');
+      let descricao = memo || nome;
+      if (nome && memo && memo.toUpperCase().indexOf(nome.toUpperCase()) < 0) descricao = nome + ' ' + memo;
+      let fitid = campoOFX(trn, 'FITID') || 'SYN:' + acctid + ':' + data + ':' + valorTxt + ':' + descricao.slice(0, 40);
+      vezes[fitid] = (vezes[fitid] || 0) + 1;
+      if (vezes[fitid] > 1) fitid += '#' + vezes[fitid];
+      const valor = decimalOFX(valorTxt, casasDe(moeda));
+      if (valorTxt.charAt(0) !== '-' || !valor || !data) {
+        ignoradas += 1;
+        continue;
+      }
+      const compra = cartao || /compra/i.test(descricao);
+      saidas.push({
+        ref: banco + ':' + acctid + ':' + fitid, data: data, descricao: descricao,
+        moeda: moeda, valor: valor, moedaSaldo: moeda, valorSaldo: valor,
+        detalhe: compra ? 'CARD' : /pix|transf|\bted\b|\bdoc\b/i.test(descricao) ? 'TRANSFER' : '',
+        sugerida: compra,
+      });
+    }
+  });
+  const origem = { nubank: 'Nubank', bb: 'Banco do Brasil' }[banco] || 'OFX';
+  return { origem: origem, saidas: saidas, ignoradas: ignoradas };
+}
+
+/** Extrato em qualquer formato lido pelo app: OFX (Nubank, BB…) ou CSV da Wise. */
+function lerExtrato(texto, casasDe) {
+  return /OFXHEADER|<OFX>/i.test(String(texto || '').slice(0, 4000))
+    ? lerExtratoOFX(texto, casasDe)
+    : lerExtratoWise(texto, casasDe);
 }
 
 /** Desembolsos já registrados de um pagador: uma perna por fonte (ou a própria compra), pagamentos e o valor transferido nos acertos. */
@@ -1746,8 +1840,8 @@ function abrirImportar() {
   const nomes = participantes();
   let novas = [];
   abrirDialogo('Importar extrato',
-    '<p class="dica">Por enquanto: extrato CSV da Wise. O arquivo é lido só neste aparelho; ao servidor vão apenas as compras que você marcar, como pendentes.</p>' +
-    '<label class="arquivo">Escolher arquivo<input type="file" id="iArquivo" accept=".csv,text/csv"></label>' +
+    '<p class="dica">Extrato OFX do Nubank ou do Banco do Brasil, ou CSV da Wise. O arquivo é lido só neste aparelho; ao servidor vão apenas as compras que você marcar, como pendentes.</p>' +
+    '<label class="arquivo">Escolher arquivo<input type="file" id="iArquivo"></label>' +
     '<div id="iResultado" class="campo"></div>' +
     '<p class="erro" data-erro role="alert"></p>' +
     '<div class="dlg-acoes oculto" id="iAcoes"><button type="submit" class="primario" id="iCriar">Criar pendentes</button></div>',
@@ -1760,7 +1854,7 @@ function abrirImportar() {
     erro.textContent = '';
     let ext;
     try {
-      ext = lerExtratoWise(await arq.text(), casas);
+      ext = lerExtrato(decodificarExtrato(await arq.arrayBuffer()), casas);
     } catch (e) {
       erro.textContent = e.message;
       resultado.innerHTML = '';
@@ -1775,7 +1869,9 @@ function abrirImportar() {
     resultado.innerHTML =
       '<p class="nota">' + esc(ext.origem + ': ' + plural(ext.saidas.length, 'saída', 'saídas') + ' · ' +
         plural(novas.length, 'nova', 'novas') + ' · ' + plural(ja.length, 'já lançada', 'já lançadas') +
-        (ext.ignoradas ? ' · ' + plural(ext.ignoradas, 'entrada ou conversão ignorada', 'entradas e conversões ignoradas') : '')) + '</p>' +
+        (ext.ignoradas ? ' · ' + (ext.origem === 'Wise'
+          ? plural(ext.ignoradas, 'entrada ou conversão ignorada', 'entradas e conversões ignoradas')
+          : plural(ext.ignoradas, 'entrada ignorada', 'entradas ignoradas')) : '')) + '</p>' +
       (novas.length
         ? '<span class="rotulo">Ainda não lançadas <button type="button" class="link link-dir" data-marcar></button></span>' +
           '<div class="cands" id="iNovas">' + novas.map((s, i) => saidaHtml(s, i)).join('') + '</div>' +
