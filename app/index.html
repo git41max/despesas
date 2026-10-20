@@ -263,7 +263,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.5.0';
+const VERSAO = '1.5.1';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -571,7 +571,12 @@ function lerExtratoOFX(texto, casasDe) {
       const memo = campoOFX(trn, 'MEMO'), nome = campoOFX(trn, 'NAME');
       let descricao = memo || nome;
       if (nome && memo && memo.toUpperCase().indexOf(nome.toUpperCase()) < 0) descricao = nome + ' ' + memo;
-      let fitid = campoOFX(trn, 'FITID') || 'SYN:' + acctid + ':' + data + ':' + valorTxt + ':' + descricao.slice(0, 40);
+      let fitid = campoOFX(trn, 'FITID');
+      // O Nubank repete o FITID da compra em todas as parcelas: a parcela entra na chave,
+      // senão a de cada fatura passaria por já lançada.
+      const parcela = /Parcela\s+(\d+)\s*\/\s*\d+/i.exec(descricao);
+      if (fitid && parcela) fitid += ':p' + parcela[1];
+      fitid = fitid || 'SYN:' + acctid + ':' + data + ':' + valorTxt + ':' + descricao.slice(0, 40);
       vezes[fitid] = (vezes[fitid] || 0) + 1;
       if (vezes[fitid] > 1) fitid += '#' + vezes[fitid];
       const valor = decimalOFX(valorTxt, casasDe(moeda));
