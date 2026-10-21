@@ -139,6 +139,7 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 .etiqueta.pendente { color: var(--aviso); }
 .etiqueta.local { color: var(--primaria); }
 .etiqueta.erro { color: var(--negativo); }
+.etiqueta.duplicado { color: var(--aviso); }
 .vazio { text-align: center; color: var(--texto2); padding: 24px 8px; }
 
 /* Acerto */
@@ -267,7 +268,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.6.3';
+const VERSAO = '1.7.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -601,7 +602,7 @@ function lerExtratoOFX(texto, casasDe) {
   const t = String(texto || '');
   if (!/<OFX>/i.test(t)) throw new Error('Arquivo OFX sem o bloco <OFX>');
   const banco = bancoOFX(t);
-  const saidas = [];
+  const saidas = [], voltas = [];
   let ignoradas = 0;
   t.split(/(?=<STMTRS>|<CCSTMTRS>)/i).forEach((bloco) => {
     if (!/<STMTTRN>/i.test(bloco)) return;
@@ -627,6 +628,8 @@ function lerExtratoOFX(texto, casasDe) {
       vezes[fitid] = (vezes[fitid] || 0) + 1;
       if (vezes[fitid] > 1) fitid += '#' + vezes[fitid];
       const valor = decimalOFX(valorTxt, casasDe(moeda));
+      const volta = /^IOF de volta de (.+)$/.exec(descricao);
+      if (volta && valorTxt.charAt(0) !== '-' && valor) voltas.push({ descricao: volta[1], valor: valor, moeda: moeda });
       if (valorTxt.charAt(0) !== '-' || !valor || !data) {
         ignoradas += 1;
         continue;
@@ -641,7 +644,33 @@ function lerExtratoOFX(texto, casasDe) {
     }
   });
   const origem = { nubank: 'Nubank', bb: 'Banco do Brasil' }[banco] || 'OFX';
-  return { origem: origem, saidas: saidas, ignoradas: ignoradas };
+  return { origem: origem, saidas: juntarIOF(saidas, voltas), ignoradas: ignoradas };
+}
+
+/**
+ * Cartão brasileiro no exterior (Nubank): a compra vem em reais e o IOF numa linha à parte,
+ * com o FITID da compra (a segunda ganha "#2") e a descrição IOF de "<compra>". A despesa é
+ * o desembolso: o IOF entra na compra, a não ser que a devolução ("IOF de volta de <compra>",
+ * uma entrada) já esteja no arquivo. Faz o mesmo que o importador do controle financeiro.
+ */
+function juntarIOF(saidas, voltas) {
+  const porRef = {};
+  saidas.forEach((s) => { porRef[s.ref] = s; });
+  return saidas.filter((s) => {
+    const m = /^IOF de "(.+)"$/.exec(s.descricao);
+    const compra = m && porRef[s.ref.replace(/#\d+$/, '')];
+    if (!compra || compra === s || compra.descricao !== m[1] || compra.iof || s.moeda !== compra.moeda) return true;
+    const k = voltas.findIndex((v) => v.descricao === compra.descricao && v.valor === s.valor && v.moeda === s.moeda);
+    if (k >= 0) {
+      voltas.splice(k, 1);
+      compra.iof = 'devolvido';
+    } else {
+      compra.valor += s.valor;
+      compra.valorSaldo += s.valor;
+      compra.iof = s.valor;
+    }
+    return false;
+  });
 }
 
 /** Extrato em qualquer formato lido pelo app: OFX (Nubank, BB…) ou CSV da Wise. */
@@ -770,6 +799,39 @@ function recortarPorMes(ls, meses) {
   });
   const proximo = visiveis.length < ls.length ? String(ls[visiveis.length].data || '').slice(0, 7) : '';
   return { visiveis: visiveis, proximo: proximo, variosMeses: vistos.length > 1 };
+}
+
+/** Palavras de 3 letras ou mais, sem acento e em minúsculas. */
+function palavras(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .split(/[^a-z0-9]+/).filter((p) => p.length >= 3);
+}
+
+/** Chave de um par de lançamentos, na mesma ordem para os dois lados. */
+function chavePar(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+
+/**
+ * O mesmo gasto lançado duas vezes, por pessoas diferentes como pagadoras: despesas de mesma
+ * moeda e valor, até 2 dias, pagadores diferentes e a mesma categoria ou uma palavra em comum
+ * na descrição. O par dispensado ("não é duplicado") fica de fora. Devolve id -> [o outro].
+ */
+function duplicados(lancamentos, dispensados) {
+  const fora = {};
+  (dispensados || []).forEach((k) => { fora[k] = true; });
+  const ds = lancamentos.filter((l) => l.tipo === 'despesa' && !l.excluido);
+  const r = {};
+  ds.forEach((a, i) => {
+    ds.slice(i + 1).forEach((b) => {
+      if (a.moeda !== b.moeda || Number(a.valor) !== Number(b.valor) || a.pagador === b.pagador) return;
+      if (diasEntre(a.data, b.data) > 2 || fora[chavePar(a.id, b.id)]) return;
+      const pa = palavras(a.descricao);
+      const parecida = (a.categoria && a.categoria === b.categoria) || palavras(b.descricao).some((p) => pa.indexOf(p) >= 0);
+      if (!parecida) return;
+      (r[a.id] = r[a.id] || []).push(b);
+      (r[b.id] = r[b.id] || []).push(a);
+    });
+  });
+  return r;
 }
 // </utils>
 
@@ -1093,6 +1155,15 @@ function quando(ts) {
     d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 /** Quem criou e quem editou, ao abrir um lançamento existente. */
+/** O aviso de "parece duplicado" na despesa aberta, com o botão para dispensar (neste aparelho). */
+function duplicadoHtml(l, outros) {
+  if (!l || !outros.length) return '';
+  return '<div class="campo"><p class="alerta">Parece o mesmo gasto que ' + outros.map((o) =>
+    '“' + esc(o.descricao || o.categoria || 'Despesa') + '”, pago por ' + esc(o.pagador) + ' em ' + esc(dataCurta(o.data))).join('; ') +
+    '. Se for, exclua um deles.</p>' +
+    '<button type="button" class="link" style="justify-self:start" data-nao-duplicado>Não é duplicado</button></div>';
+}
+
 function autoriaHtml(l) {
   if (!l) return '';
   const partes = [];
@@ -1269,6 +1340,7 @@ function abrirDespesa(l) {
   const pesosIni = lerPesos(d.pesos);
   let pesosAbertos = Object.keys(pesosIni).length > 0;
   const cats = opcoesCategoria(categorias(), d.categoria);
+  const outros = l ? (duplicados(lancamentosVisiveis(), lerG('naoDuplicados', []))[l.id] || []) : [];
 
   let acoes = '';
   if (editando) acoes += '<button type="button" class="perigo" data-excluir>Excluir</button>';
@@ -1288,6 +1360,7 @@ function abrirDespesa(l) {
     '<div class="campo"><button type="button" class="link" style="justify-self:start" id="fPesosBtn"></button><div id="fPesos" class="pesos oculto"></div></div>' +
     campoData(d.data) +
     '<div class="campo"><span class="rotulo">Categoria (opcional)</span>' + chips('categoria', cats, [d.categoria], false, cats.map(maiuscula)) + '</div>' +
+    duplicadoHtml(l, outros) +
     autoriaHtml(l) +
     '<p class="erro" data-erro role="alert"></p>' +
     '<div class="dlg-acoes">' + acoes + '<button type="submit" class="primario">Salvar</button></div>',
@@ -1420,6 +1493,14 @@ function abrirDespesa(l) {
   rotularTodos();
   const btnExcluir = $('[data-excluir]', dlgForm);
   if (btnExcluir) btnExcluir.onclick = () => excluirLancamento(l);
+  const btnNaoDup = $('[data-nao-duplicado]', dlgForm);
+  if (btnNaoDup) {
+    btnNaoDup.onclick = () => {
+      gravarG('naoDuplicados', lerG('naoDuplicados', []).concat(outros.map((o) => chavePar(l.id, o.id))));
+      btnNaoDup.parentNode.remove();
+      render();
+    };
+  }
   const btnConfirmar = $('[data-confirmar]', dlgForm);
   if (btnConfirmar) btnConfirmar.onclick = enviarConfirmando;
 
@@ -2204,7 +2285,7 @@ function valoresItem(l) {
   };
 }
 
-function itemHtml(l) {
+function itemHtml(l, dup) {
   const parts = lista(l.participantes);
   const despesa = l.tipo === 'despesa';
   let titulo, sub;
@@ -2222,6 +2303,7 @@ function itemHtml(l) {
   }
   const etiquetas = [];
   if (l.status === 'pendente') etiquetas.push('<span class="etiqueta pendente">pendente</span>');
+  if (dup && dup[l.id]) etiquetas.push('<span class="etiqueta duplicado">parece duplicado</span>');
   if (l._erro) etiquetas.push('<span class="etiqueta erro">erro ao sincronizar</span>');
   else if (l._local) etiquetas.push('<span class="etiqueta local">não sincronizado</span>');
   const esq = [sub].concat(etiquetas).filter(Boolean).join(' ');
@@ -2244,6 +2326,7 @@ function renderLista() {
   // Os pendentes aparecem todos, para conferir antes de confirmar.
   const r = filtroPendentes ? { visiveis: ls, proximo: '', variosMeses: false } : recortarPorMes(ls, mesesVisiveis);
   let html = filtroPendentes ? '<button type="button" class="primario largo" id="btnLote">Confirmar pendentes</button>' : '';
+  const dup = duplicados(ls, lerG('naoDuplicados', []));
   let dia = null;
   let mes = null;
   r.visiveis.forEach((l) => {
@@ -2259,7 +2342,7 @@ function renderLista() {
       dia = l.data;
       html += '<div class="dia">' + esc(dataCurta(dia)) + '</div><div class="grupo">';
     }
-    html += itemHtml(l);
+    html += itemHtml(l, dup);
   });
   html += '</div>';
   if (r.proximo) html += '<button type="button" class="mais" id="btnMais">Mostrar ' + esc(nomeMes(r.proximo)) + '</button>';
