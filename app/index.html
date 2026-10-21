@@ -87,7 +87,7 @@ h1, h2, h3 { margin: 0; }
 /* Cabeçalho */
 .topo { padding: 6px 8px 10px 16px; position: sticky; top: 0; z-index: 2; background: var(--fundo); border-bottom: 1px solid var(--borda); }
 .topo-linha { display: flex; align-items: center; gap: 2px; }
-.topo h1 { font-size: 18px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo h1 { font-size: 24px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .titulo-grupo { background: none; border: 0; padding: 0; border-radius: 0; font: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .titulo-grupo span { color: var(--texto2); font-weight: 400; }
 .icone { width: 44px; padding: 0; border: 0; background: transparent; font-size: 20px; }
@@ -116,6 +116,9 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 
 /* Lista: um grupo por dia, linhas separadas por filete */
 .dia { font-size: 13px; color: var(--texto2); margin: 14px 4px 6px; }
+.mes { font-size: 15px; margin: 22px 4px 0; }
+.bloco > h2 + .mes { margin-top: 4px; }
+.mais { width: 100%; margin-top: 14px; }
 .grupo { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
 .item {
   display: flex; flex-direction: column; justify-content: center; gap: 2px;
@@ -263,7 +266,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.6.0';
+const VERSAO = '1.6.1';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -752,6 +755,21 @@ function migrarLegado(store, novoId, apiPadrao) {
 function opcoesCategoria(categorias, atual) {
   return atual && categorias.indexOf(atual) < 0 ? categorias.concat([atual]) : categorias.slice();
 }
+
+/**
+ * Recorte da lista (já do mais novo ao mais antigo) nos `meses` meses mais recentes que têm lançamento.
+ * Devolve os mostrados, o mês (AAAA-MM) do primeiro escondido ('' se não há) e se a lista toda tem mais de um mês.
+ */
+function recortarPorMes(ls, meses) {
+  const vistos = [];
+  const visiveis = ls.filter((l) => {
+    const m = String(l.data || '').slice(0, 7);
+    if (vistos.indexOf(m) < 0) vistos.push(m);
+    return vistos.indexOf(m) < meses;
+  });
+  const proximo = visiveis.length < ls.length ? String(ls[visiveis.length].data || '').slice(0, 7) : '';
+  return { visiveis: visiveis, proximo: proximo, variosMeses: vistos.length > 1 };
+}
 // </utils>
 
 // ---------------------------------------------------------------------------
@@ -785,6 +803,8 @@ let fila = lerG('fila', []);          // operações do grupo aberto ainda não 
 let rede = 'ocioso';                  // ocioso | sincronizando | offline | erro
 let erroRede = '';
 let filtroPendentes = false;
+const MESES_INICIAIS = 2;
+let mesesVisiveis = MESES_INICIAIS;   // a lista mostra os meses mais recentes; "Mostrar <mês>" acrescenta um
 let enviados = [];                    // aceitos pelo servidor; seguem aplicados até o próximo estado chegar
 let emVoo = null;                     // uid do item da fila sendo enviado
 
@@ -1094,6 +1114,13 @@ function dataCurta(iso) {
   const opc = { weekday: 'long', day: 'numeric', month: 'long' };
   if (a !== ref.getFullYear()) opc.year = 'numeric';
   return maiuscula(dt.toLocaleDateString('pt-BR', opc).replace('-feira', ''));
+}
+
+/** "outubro de 2026" a partir de AAAA-MM. */
+function nomeMes(am) {
+  const [a, m] = String(am).split('-').map(Number);
+  if (!a) return 'sem data';
+  return new Date(a, m - 1, 1, 12).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
 const NOVA_MOEDA = '__nova';
@@ -1831,6 +1858,7 @@ async function abrirGrupo(id) {
   fila = lerG('fila', []);
   enviados = [];
   filtroPendentes = false;
+  mesesVisiveis = MESES_INICIAIS;
   rede = 'ocioso';
   erroRede = '';
   window.scrollTo(0, 0);
@@ -2211,9 +2239,20 @@ function renderLista() {
   if (!ls.length) {
     return '<p class="vazio">' + (filtroPendentes ? 'Nenhum lançamento pendente.' : 'Nenhum lançamento ainda. Toque em “+ Nova despesa”.') + '</p>';
   }
+  // A Casa acumula lançamentos sem fim: só os meses mais recentes, com um botão para o anterior.
+  // Os pendentes aparecem todos, para conferir antes de confirmar.
+  const r = filtroPendentes ? { visiveis: ls, proximo: '', variosMeses: false } : recortarPorMes(ls, mesesVisiveis);
   let html = filtroPendentes ? '<button type="button" class="primario largo" id="btnLote">Confirmar pendentes</button>' : '';
   let dia = null;
-  ls.forEach((l) => {
+  let mes = null;
+  r.visiveis.forEach((l) => {
+    const m = String(l.data || '').slice(0, 7);
+    if (r.variosMeses && m !== mes) {
+      if (dia !== null) html += '</div>';
+      dia = null;
+      mes = m;
+      html += '<h3 class="mes">' + esc(maiuscula(nomeMes(m))) + '</h3>';
+    }
     if (l.data !== dia) {
       if (dia !== null) html += '</div>';
       dia = l.data;
@@ -2221,7 +2260,9 @@ function renderLista() {
     }
     html += itemHtml(l);
   });
-  return html + '</div>';
+  html += '</div>';
+  if (r.proximo) html += '<button type="button" class="mais" id="btnMais">Mostrar ' + esc(nomeMes(r.proximo)) + '</button>';
+  return html;
 }
 
 /** Uma dívida: nomes à esquerda e um botão por moeda, que abre o pagamento já preenchido. */
@@ -2310,11 +2351,11 @@ function renderPrincipal() {
     '<main>' +
       ((estado.invalidos || []).length ? '<div class="aviso-caixa">' + estado.invalidos.length +
         ' linha(s) da planilha com erro foram ignoradas no cálculo. Veja a aba Resumo.</div>' : '') +
+      '<section class="bloco" id="blocoAcerto"><h2>Acerto de contas</h2>' + renderAcerto() + '</section>' +
       '<section class="bloco"><h2>Lançamentos<span class="espaco"></span>' +
         (pend ? '<button type="button" class="selo' + (filtroPendentes ? ' ativo' : '') + '" id="seloPend" aria-pressed="' + filtroPendentes + '">' +
           pend + ' pendente' + (pend > 1 ? 's' : '') + '</button>' : '') +
       '</h2>' + renderLista() + '</section>' +
-      '<section class="bloco" id="blocoAcerto"><h2>Acerto de contas</h2>' + renderAcerto() + '</section>' +
     '</main>' +
     '<button type="button" class="primario fab" id="fab">+ Nova despesa</button>';
 
@@ -2331,6 +2372,7 @@ raiz.addEventListener('click', (ev) => {
   if (t.closest('#btnSync')) return fila.length ? abrirFila() : atualizar();
   if (t.closest('#seloPend')) { filtroPendentes = !filtroPendentes; return render(); }
   if (t.closest('#btnLote')) return abrirConfirmarPendentes();
+  if (t.closest('#btnMais')) { mesesVisiveis++; return render(); }
   const visao = t.closest('[data-visao]');
   if (visao) { gravar(LS.visao, visao.dataset.visao); return render(); }
   const divida = t.closest('.divida');
