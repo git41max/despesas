@@ -85,7 +85,8 @@ h1, h2, h3 { margin: 0; }
 .oculto { display: none !important; }
 
 /* Cabeçalho */
-.topo { padding: 6px 8px 10px 16px; position: sticky; top: 0; z-index: 2; background: var(--fundo); border-bottom: 1px solid var(--borda); }
+/* O cabeçalho cobre a área da barra de status (PWA no iPhone): parado ou fixo na rolagem, nada passa por baixo dela. */
+.topo { margin-top: calc(-1 * env(safe-area-inset-top)); padding: calc(6px + env(safe-area-inset-top)) 8px 10px 16px; position: sticky; top: 0; z-index: 2; background: var(--fundo); border-bottom: 1px solid var(--borda); }
 .topo-linha { display: flex; align-items: center; gap: 2px; }
 .topo h1 { font-size: 24px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .titulo-grupo { background: none; border: 0; padding: 0; border-radius: 0; font: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
@@ -266,7 +267,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.6.1';
+const VERSAO = '1.6.2';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
