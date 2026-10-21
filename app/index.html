@@ -263,7 +263,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.5.1';
+const VERSAO = '1.6.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -461,9 +461,10 @@ function dataDMA(texto) {
 /**
  * Extrato CSV da Wise -> { origem, saidas, ignoradas }. Só saídas de dinheiro viram candidatas:
  * entradas (depósitos, estornos) e conversões entre saldos ficam de fora.
- * Cada saída: { ref, data, descricao, moeda, valor (a compra), moedaSaldo, valorSaldo (o desembolso), detalhe, sugerida }.
+ * Cada saída: { ref, data, descricao, moeda, valor (a compra), moedaSaldo, valorSaldo (o desembolso), fontes, detalhe, sugerida }.
  * Quando a Wise converteu na hora (compra em outra moeda), a compra vem de "Exchange To"/"Exchange To Amount".
- * casasDe(codigo) informa as casas decimais de cada moeda.
+ * Linhas com o mesmo ID e a mesma moeda de compra (o TfL cobrado em duas vezes) viram uma saída só,
+ * somada; fontes tem um desembolso por moeda de saldo. casasDe(codigo) informa as casas decimais de cada moeda.
  */
 function lerExtratoWise(texto, casasDe) {
   const linhas = lerCSV(texto);
@@ -473,13 +474,12 @@ function lerExtratoWise(texto, casasDe) {
     throw new Error('Formato não reconhecido. O app lê o OFX do Nubank e do Banco do Brasil e o CSV da Wise.');
   }
   const campo = (l, nome) => { const i = cab.indexOf(nome); return i < 0 ? '' : String(l[i] || '').trim(); };
-  const vistos = {};
+  const porId = {};
   const saidas = [];
   let ignoradas = 0;
   linhas.slice(1).forEach((l) => {
     const id = campo(l, 'TransferWise ID');
-    if (!id || vistos[id]) return;
-    vistos[id] = true;
+    if (!id) return;
     const valorTxt = campo(l, 'Amount');
     const tipo = campo(l, 'Transaction Type') || (valorTxt.charAt(0) === '-' ? 'DEBIT' : 'CREDIT');
     const detalhe = campo(l, 'Transaction Details Type');
@@ -496,13 +496,56 @@ function lerExtratoWise(texto, casasDe) {
       const v = decimalPonto(campo(l, 'Exchange To Amount'), casasDe(para));
       if (v) { moeda = para; valor = v; }
     }
-    saidas.push({
+    const s = {
       ref: 'wise:' + id, data: data, descricao: campo(l, 'Merchant') || campo(l, 'Description'),
       moeda: moeda, valor: valor, moedaSaldo: moedaSaldo, valorSaldo: valorSaldo,
-      detalhe: detalhe, sugerida: detalhe === 'CARD',
-    });
+      fontes: [{ moeda: moedaSaldo, valor: valorSaldo }], detalhe: detalhe, sugerida: detalhe === 'CARD',
+    };
+    const ant = porId[id];
+    if (ant) {
+      if (ant.moeda === s.moeda) somarSaida(ant, s); // outra moeda de compra: fica a primeira linha
+      return;
+    }
+    porId[id] = s;
+    saidas.push(s);
   });
   return { origem: 'Wise', saidas: saidas, ignoradas: ignoradas };
+}
+
+/** Soma em a a saída b da mesma compra: o valor, a data mais antiga e o desembolso na fonte da moeda dele. */
+function somarSaida(a, b) {
+  a.valor += b.valor;
+  if (b.data < a.data) a.data = b.data;
+  b.fontes.forEach((f) => {
+    const igual = a.fontes.find((g) => g.moeda === f.moeda);
+    if (igual) igual.valor += f.valor;
+    else a.fontes.push({ moeda: f.moeda, valor: f.valor });
+  });
+  a.moedaSaldo = a.fontes[0].moeda;
+  a.valorSaldo = a.fontes[0].valor;
+}
+
+/** O campo fontes de uma saída do extrato: vazio quando pagou na própria moeda da compra. */
+function fontesDaSaida(s) {
+  const fs = s.fontes || [{ moeda: s.moedaSaldo, valor: s.valorSaldo }];
+  return fs.length === 1 && fs[0].moeda === s.moeda ? '' : fs.map((f) => f.moeda + ':' + f.valor).join(';');
+}
+
+/**
+ * A compra paga com o saldo de duas moedas chega em dois arquivos da Wise (um por moeda), com o mesmo ID.
+ * Se l (a despesa já importada do primeiro arquivo, mesmo id) não tem a fonte da moeda desta saída, devolve
+ * l com a compra somada e a fonte acrescentada; senão (já lançada de verdade), null.
+ */
+function complementar(s, l) {
+  if (!l || l.tipo !== 'despesa' || l.excluido || l.id !== s.ref || l.moeda !== s.moeda) return null;
+  const atuais = lerFontes(l.fontes);
+  const fontes = atuais.length ? atuais : [{ moeda: l.moeda, valor: Number(l.valor) }];
+  const novas = s.fontes || [{ moeda: s.moedaSaldo, valor: s.valorSaldo }];
+  if (novas.some((f) => fontes.some((g) => g.moeda === f.moeda))) return null;
+  return Object.assign({}, l, {
+    valor: Number(l.valor) + s.valor, data: s.data < l.data ? s.data : l.data,
+    fontes: fontes.concat(novas).map((f) => f.moeda + ':' + f.valor).join(';'),
+  });
 }
 
 /** Bytes do arquivo -> texto: UTF-8 quando válido; senão Windows-1252 (o OFX do BB declara CHARSET:1252). */
@@ -1835,7 +1878,8 @@ function candHtml(i, marcado, titulo, sub, valor, valorSub) {
 function saidaHtml(s, i) {
   return candHtml(i, s.sugerida, s.descricao || '—',
     dataBr(s.data) + (s.detalhe && s.detalhe !== 'CARD' ? ' · ' + (s.detalhe === 'TRANSFER' ? 'transferência' : s.detalhe.toLowerCase()) : ''),
-    dinheiro(s.valor, s.moeda), s.moeda !== s.moedaSaldo ? 'pago com ' + dinheiro(s.valorSaldo, s.moedaSaldo) : '');
+    dinheiro(s.valor, s.moeda), fontesDaSaida(s)
+      ? 'pago com ' + (s.fontes || [{ moeda: s.moedaSaldo, valor: s.valorSaldo }]).map((f) => dinheiro(f.valor, f.moeda)).join(' + ') : '');
 }
 
 function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
@@ -1843,7 +1887,7 @@ function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
 function abrirImportar() {
   const quem = eu();
   const nomes = participantes();
-  let novas = [];
+  let novas = [], complementos = [];
   abrirDialogo('Importar extrato',
     '<p class="dica">Extrato OFX do Nubank ou do Banco do Brasil, ou CSV da Wise. O arquivo é lido só neste aparelho; ao servidor vão apenas as compras que você marcar, como pendentes.</p>' +
     '<label class="arquivo">Escolher arquivo<input type="file" id="iArquivo"></label>' +
@@ -1868,9 +1912,13 @@ function abrirImportar() {
     } finally {
       ev.target.value = ''; // permite escolher o mesmo arquivo de novo
     }
-    const casados = casarExtrato(ext.saidas, pernasDesembolso(lancamentosVisiveis(), quem));
+    const visiveis = lancamentosVisiveis();
+    const casados = casarExtrato(ext.saidas, pernasDesembolso(visiveis, quem));
     novas = ext.saidas.filter((s, i) => !casados[i]);
-    const ja = ext.saidas.filter((s, i) => casados[i]);
+    // O mesmo ID da Wise, de outro saldo: completa a despesa que o outro arquivo criou
+    complementos = ext.saidas.map((s, i) => casados[i] && complementar(s, visiveis.find((l) => l.id === casados[i])))
+      .map((c, i) => c && { saida: ext.saidas[i], despesa: c }).filter(Boolean);
+    const ja = ext.saidas.filter((s, i) => casados[i] && !complementos.some((c) => c.saida === s));
     resultado.innerHTML =
       '<p class="nota">' + esc(ext.origem + ': ' + plural(ext.saidas.length, 'saída', 'saídas') + ' · ' +
         plural(novas.length, 'nova', 'novas') + ' · ' + plural(ja.length, 'já lançada', 'já lançadas') +
@@ -1882,15 +1930,25 @@ function abrirImportar() {
           '<div class="cands" id="iNovas">' + novas.map((s, i) => saidaHtml(s, i)).join('') + '</div>' +
           '<div class="campo"><span class="rotulo">Dividir entre</span>' + chips('participantes', nomes, nomes, true) + '</div>' +
           '<p class="dica" id="iNota"></p>'
-        : '<p class="vazio">Nenhuma compra nova: tudo já está lançado.</p>') +
+        : (complementos.length ? '' : '<p class="vazio">Nenhuma compra nova: tudo já está lançado.</p>')) +
+      (complementos.length
+        ? '<span class="rotulo">Completam uma compra já lançada (o mesmo ID, pago também com este saldo)</span>' +
+          '<div class="cands" id="iComp">' + complementos.map((c, i) => candHtml(i, true, c.saida.descricao || '—',
+            dataBr(c.saida.data) + ' · fica ' + dinheiro(c.despesa.valor, c.despesa.moeda) + ' no total',
+            '+ ' + dinheiro(c.saida.valor, c.saida.moeda), 'pago com ' + dinheiro(c.saida.valorSaldo, c.saida.moedaSaldo))
+            .replace('data-i=', 'data-c=')).join('') + '</div>'
+        : '') +
       (ja.length ? '<details><summary>Ver ' + plural(ja.length, 'já lançada', 'já lançadas') + '</summary><div class="cands">' +
         ja.map((s) => saidaHtml(s, -1)).join('') + '</div></details>' : '');
-    $('#iAcoes').classList.toggle('oculto', !novas.length);
+    $('#iAcoes').classList.toggle('oculto', !novas.length && !complementos.length);
     atualizarSelecao();
   };
 
   function selecionadas() {
     return $$('#iNovas input[data-i]', dlgForm).filter((c) => c.checked).map((c) => novas[Number(c.dataset.i)]);
+  }
+  function completar() {
+    return $$('#iComp input[data-c]', dlgForm).filter((c) => c.checked).map((c) => complementos[Number(c.dataset.c)]);
   }
   function moedasACadastrar(sel) {
     const cadastradas = moedas().map((m) => m.moeda);
@@ -1902,11 +1960,19 @@ function abrirImportar() {
   }
   function atualizarSelecao() {
     const marcar = $('[data-marcar]', dlgForm);
-    if (!marcar) return;
-    const sel = selecionadas();
+    const sel = selecionadas(), comp = completar();
+    if (!marcar) {
+      if (!complementos.length) return;
+      $('#iCriar').textContent = comp.length ? 'Completar ' + plural(comp.length, 'compra', 'compras') : 'Marque ao menos uma';
+      $('#iCriar').disabled = !comp.length;
+      return;
+    }
     marcar.textContent = sel.length === novas.length ? 'desmarcar todas' : 'marcar todas';
-    $('#iCriar').textContent = sel.length ? 'Criar ' + plural(sel.length, 'pendente', 'pendentes') : 'Marque ao menos uma';
-    $('#iCriar').disabled = !sel.length;
+    $('#iCriar').textContent = sel.length || comp.length
+      ? maiuscula([sel.length ? 'criar ' + plural(sel.length, 'pendente', 'pendentes') : '',
+        comp.length ? 'completar ' + plural(comp.length, 'compra', 'compras') : ''].filter(Boolean).join(' e '))
+      : 'Marque ao menos uma';
+    $('#iCriar').disabled = !sel.length && !comp.length;
     const faltam = moedasACadastrar(sel);
     $('#iNota').textContent = 'Entram como pendentes, pagas por ' + quem + '; confira e confirme depois.' +
       (faltam.length ? ' Moeda nova a cadastrar: ' + faltam.map((c) => rotuloMoeda(c) + (rotuloMoeda(c) === c ? '' : ' (' + c + ')')).join(', ') + '.' : '');
@@ -1920,26 +1986,29 @@ function abrirImportar() {
   });
 
   function salvar() {
-    const sel = selecionadas();
-    if (!sel.length) throw new Error('Marque ao menos uma compra');
-    const parts = lerChips(dlgForm, 'participantes');
-    if (!parts.length) throw new Error('Escolha entre quem dividir');
-    const ops = moedasACadastrar(sel).map((c) => {
+    const sel = selecionadas(), comp = completar();
+    if (!sel.length && !comp.length) throw new Error('Marque ao menos uma compra');
+    const parts = sel.length ? lerChips(dlgForm, 'participantes') : [];
+    if (sel.length && !parts.length) throw new Error('Escolha entre quem dividir');
+    const ops = moedasACadastrar(sel.concat(comp.map((c) => c.saida))).map((c) => {
       const m = infoMoeda(c);
       return ['moeda', { moeda: c, casas_decimais: m.casas_decimais, simbolo: m.simbolo }];
     });
     sel.forEach((s) => ops.push(['criar', {
       id: s.ref, tipo: 'despesa', data: s.data, descricao: s.descricao, categoria: '',
       moeda: s.moeda, valor: s.valor,
-      fontes: s.moeda !== s.moedaSaldo ? s.moedaSaldo + ':' + s.valorSaldo : '', // a linha do extrato é a fonte
+      fontes: fontesDaSaida(s), // a linha do extrato é a fonte
       pagador: quem, participantes: parts.join(';'), pesos: '', moeda_paga: '', valor_pago: '',
       status: 'pendente', origem: 'extrato',
     }]));
+    comp.forEach((c) => ops.push(['editar', c.despesa]));
     fecharDialogo();
-    filtroPendentes = true;
+    filtroPendentes = sel.length > 0;
     enfileirarVarios(ops);
     window.scrollTo(0, 0);
-    toast(plural(sel.length, 'pendente criada', 'pendentes criadas') + '. Confira e confirme.');
+    toast([sel.length ? plural(sel.length, 'pendente criada', 'pendentes criadas') + '. Confira e confirme.' : '',
+      comp.length ? plural(comp.length, 'compra completada', 'compras completadas') + ' com o outro saldo.' : '']
+      .filter(Boolean).join(' '));
   }
 }
 
