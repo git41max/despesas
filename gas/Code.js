@@ -109,7 +109,7 @@ function verificarToken(token) {
     throw e;
   }
   if (!token || String(token) !== esperado) {
-    var inv = erroUsuario('token inválido: abra de novo o link da viagem');
+    var inv = erroUsuario('token inválido: abra de novo o link do grupo');
     inv.codigo = 'token_invalido';
     throw inv;
   }
@@ -443,17 +443,13 @@ function onOpen() {
  */
 function configurarPlanilha() {
   var ss = planilha();
+  var ini = configInicial();
 
   var cfg = ss.getSheetByName(ABA_CONFIG);
   if (!cfg) {
     cfg = ss.insertSheet(ABA_CONFIG);
-    cfg.getRange(1, 1, 5, 2).setValues([
-      ['chave', 'valor'],
-      ['nome_viagem', 'Minha viagem'],
-      ['token', ''],
-      ['participantes', 'Ana;Bruno;Carla'],
-      ['url_app', ''],
-    ]);
+    var linhas = linhasConfigIniciais(ini);
+    cfg.getRange(1, 1, linhas.length, 2).setValues(linhas);
     cfg.getRange('A:B').setNumberFormat('@');
     cfg.setFrozenRows(1);
   }
@@ -486,8 +482,35 @@ function configurarPlanilha() {
 
   if (!ss.getSheetByName(ABA_RESUMO)) ss.insertSheet(ABA_RESUMO);
 
-  if (!PropertiesService.getScriptProperties().getProperty('TOKEN')) gerarNovoToken();
+  if (!PropertiesService.getScriptProperties().getProperty('TOKEN')) {
+    if (ini.token) definirToken(ini.token);
+    else gerarNovoToken();
+  }
   atualizarResumo(ss);
+}
+
+/**
+ * CONFIG_INICIAL, que o grupo.py acrescenta ao fim deste arquivo só na criação do grupo
+ * (nome_viagem, participantes, categorias, url_app, url_api e token); {} sem ele. O push
+ * seguinte manda o Code.js do repositório, sem ele.
+ */
+function configInicial() {
+  return typeof CONFIG_INICIAL === 'object' && CONFIG_INICIAL ? CONFIG_INICIAL : {};
+}
+
+/** Linhas da aba Config ao criá-la: as de CONFIG_INICIAL ou as de exemplo. */
+function linhasConfigIniciais(ini) {
+  ini = ini || {};
+  var linhas = [
+    ['chave', 'valor'],
+    ['nome_viagem', ini.nome_viagem || 'Minha viagem'],
+    ['token', ''],
+    ['participantes', ini.participantes || 'Ana;Bruno;Carla'],
+    ['url_app', ini.url_app || ''],
+  ];
+  if (ini.url_api) linhas.push(['url_api', ini.url_api]);
+  if (ini.categorias) linhas.push(['categorias', ini.categorias]);
+  return linhas;
 }
 
 /** Grava chave | valor na aba Config, na linha da chave ou numa nova no fim. */
@@ -502,10 +525,14 @@ function gravarConfig(ss, chave, valor) {
 
 /** Gera token novo e grava em Config e nas Script Properties (o link antigo deixa de valer). */
 function gerarNovoToken() {
-  var token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  var token = definirToken((Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''));
+  console.log('Novo token gerado. Para o link: Despesas > Mostrar link de convite.');
+  return token;
+}
+
+function definirToken(token) {
   PropertiesService.getScriptProperties().setProperty('TOKEN', token);
   gravarConfig(planilha(), 'token', token);
-  console.log('Novo token gerado. Para o link: Despesas > Mostrar link de convite.');
   return token;
 }
 

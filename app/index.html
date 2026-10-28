@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>Despesas da Viagem</title>
+<title>Despesas</title>
 <style>
 :root {
   color-scheme: dark;
@@ -28,6 +28,7 @@
   --positivo: #3ecf8e;
   --negativo: #ff7070;
   --aviso: #f5b942;
+  --repasse-fundo: rgba(62, 207, 142, .14);
   --raio: 14px;
   --sombra: 0 8px 30px rgba(0, 0, 0, .45);
 }
@@ -44,6 +45,7 @@
     --positivo: #0f9d63;
     --negativo: #d93636;
     --aviso: #b7791f;
+    --repasse-fundo: rgba(15, 157, 99, .12);
     --sombra: 0 8px 30px rgba(0, 0, 0, .15);
   }
 }
@@ -122,14 +124,17 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 .mais { width: 100%; margin-top: 14px; }
 .grupo { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
 .item {
-  display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  width: 100%; min-height: 56px; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 9px 14px;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 56px; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 9px 14px 9px 12px;
 }
 .item + .item { border-top: 1px solid var(--borda); }
+.item-corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+/* Ícone da categoria num círculo neutro; pagamentos e acertos com seta, no verde suave. */
+.item-icone { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--superficie2); color: var(--texto2); }
+.item.repasse .item-icone { background: var(--repasse-fundo); color: var(--positivo); }
 .item:active { background: var(--superficie2); }
 .item-linha { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
 .item-titulo { flex: 1 1 0; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item-cat { font-weight: 400; color: var(--texto2); }
 .item-valor { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .item-sub { color: var(--texto2); font-size: 13px; }
 .item-sub.dir { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
@@ -141,6 +146,20 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 .etiqueta.erro { color: var(--negativo); }
 .etiqueta.duplicado { color: var(--aviso); }
 .vazio { text-align: center; color: var(--texto2); padding: 24px 8px; }
+.ic { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Busca e filtros da lista */
+.ferramenta { position: relative; width: 44px; display: grid; place-items: center; color: var(--texto2); }
+.ferramenta .ic { width: 22px; height: 22px; }
+.ferramenta.ativo { color: var(--primaria); }
+.contador { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px; background: var(--primaria); color: var(--primaria-texto); font-size: 11px; font-weight: 700; line-height: 16px; }
+.busca { display: flex; gap: 8px; margin-bottom: 8px; }
+.busca input { flex: 1; min-width: 0; }
+.filtros-ativos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+.filtro-ativo { min-height: 32px; border-radius: 999px; padding: 0 10px 0 12px; font-size: 14px; }
+.filtro-ativo::after { content: "×"; margin-left: 6px; color: var(--texto2); }
+.filtros-ativos .link { min-height: 32px; font-size: 14px; }
+.resumo-filtro { font-size: 14px; color: var(--texto2); margin: 6px 4px 0; font-variant-numeric: tabular-nums; }
 
 /* Acerto */
 .segmentado { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
@@ -155,6 +174,10 @@ main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
 .divida-valores { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
 .pilula { border-radius: 999px; padding: 0 10px 0 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pilula::after { content: "›"; margin-left: 8px; color: var(--texto2); }
+/* A situação de quem usa o aparelho: quanto deve e quanto tem a receber, um valor por moeda. */
+.situacao { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px 0 12px; border-bottom: 1px solid var(--borda); }
+.situacao b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.situacao b.zero { color: var(--texto2); font-weight: 400; }
 .saldos { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
 .saldos th, .saldos td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--borda); }
 .saldos th:first-child, .saldos td:first-child { text-align: left; }
@@ -199,6 +222,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 /* Chips em grade de colunas iguais (--cols definido em chips()). */
 .chips { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 6px; }
 .chip { border-radius: 999px; min-height: 44px; font-size: 15px; padding: 0 8px; background: var(--superficie2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chips.fluxo { display: flex; flex-wrap: wrap; }
+.chips.fluxo .chip { flex: 1 1 auto; padding: 0 14px; }
 .chip[aria-pressed="true"] { background: var(--primaria); color: var(--primaria-texto); border-color: transparent; }
 .pesos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
 .pesos label { display: grid; grid-template-columns: 1fr 64px; align-items: center; gap: 6px; font-size: 15px; }
@@ -261,6 +286,24 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 <dialog id="dlg"><form id="dlgForm" class="dlg" novalidate></form></dialog>
 <dialog id="dlg2"><form id="dlg2Form" class="dlg" novalidate></form></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
+<!-- Ícones (traço de 24×24, cor do texto em volta), usados por icone(nome). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-talher" viewBox="0 0 24 24"><path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M18 21V3c-2.2 1-3.5 3.6-3.5 7.5V14H18"/></symbol>
+  <symbol id="i-cesta" viewBox="0 0 24 24"><path d="M3 10h18l-1.8 8.4a2 2 0 0 1-2 1.6H6.8a2 2 0 0 1-2-1.6zM7.5 10 11 4M16.5 10 13 4M9.5 14v2.5M14.5 14v2.5"/></symbol>
+  <symbol id="i-carro" viewBox="0 0 24 24"><path d="m5 11 1.6-4.3A2 2 0 0 1 8.5 5.4h7a2 2 0 0 1 1.9 1.3L19 11M4 11h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM6.5 14h1.5M16 14h1.5M5 17v2a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-2M16 17v2a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-2M2.5 9.5 5 11M21.5 9.5 19 11"/></symbol>
+  <symbol id="i-aviao" viewBox="0 0 24 24"><path d="M12 2c-1 0-1.5 1-1.5 2v5.5L3 14v2l7.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L21 16v-2l-7.5-4.5V4c0-1-.5-2-1.5-2z"/></symbol>
+  <symbol id="i-pilula" viewBox="0 0 24 24"><path d="M10.5 20.5a4.95 4.95 0 0 1-7-7l6-6a4.95 4.95 0 0 1 7 7zM6.5 10.5l7 7"/></symbol>
+  <symbol id="i-cama" viewBox="0 0 24 24"><path d="M3 5v14M3 15h18v4M21 15v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11.5" r="1.5"/></symbol>
+  <symbol id="i-ingresso" viewBox="0 0 24 24"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1zM14 6v2M14 11v2M14 16v2"/></symbol>
+  <symbol id="i-raio" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-casa" viewBox="0 0 24 24"><path d="m3 11 9-7 9 7M5 9.5V20h14V9.5M10 20v-6h4v6"/></symbol>
+  <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/></symbol>
+  <symbol id="i-etiqueta" viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-cambio" viewBox="0 0 24 24"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></symbol>
+  <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-filtros" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+</svg>
 
 <script>
 'use strict';
@@ -268,7 +311,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 // URL /exec do Web App do Apps Script (Implantar > Gerenciar implantações).
 // Também pode vir no link de convite: #t=<token>&api=<url>
 const API_URL = '';
-const VERSAO = '1.7.0';
+const VERSAO = '1.8.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
 const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
@@ -801,6 +844,11 @@ function recortarPorMes(ls, meses) {
   return { visiveis: visiveis, proximo: proximo, variosMeses: vistos.length > 1 };
 }
 
+/** Sem acento e em minúsculas, para comparar textos. */
+function semAcento(texto) {
+  return String(texto || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
 /** Palavras de 3 letras ou mais, sem acento e em minúsculas. */
 function palavras(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -829,6 +877,124 @@ function duplicados(lancamentos, dispensados) {
       if (!parecida) return;
       (r[a.id] = r[a.id] || []).push(b);
       (r[b.id] = r[b.id] || []).push(a);
+    });
+  });
+  return r;
+}
+
+// --- Acerto visto por quem usa o aparelho ---
+
+/**
+ * Das transferências sugeridas (por moeda), as que `eu` paga ou recebe:
+ * { deve: {moeda: total}, receber: {moeda: total}, linhas: [{de, para, valores: {moeda: valor}}] }.
+ * Uma linha por par e direção: primeiro o que eu devo, depois o que me devem, na ordem dos participantes.
+ */
+function minhaSituacao(tpm, eu, ordem) {
+  const deve = {}, receber = {}, porPar = {};
+  Object.keys(tpm || {}).forEach((m) => (tpm[m] || []).forEach((t) => {
+    if (t.de !== eu && t.para !== eu) return;
+    const total = t.de === eu ? deve : receber;
+    total[m] = (total[m] || 0) + t.valor;
+    const k = JSON.stringify([t.de, t.para]);
+    const par = porPar[k] = porPar[k] || { de: t.de, para: t.para, valores: {} };
+    par.valores[m] = (par.valores[m] || 0) + t.valor;
+  }));
+  const outro = (p) => (p.de === eu ? p.para : p.de);
+  const pos = (n) => { const i = ordem.indexOf(n); return i < 0 ? ordem.length : i; };
+  const linhas = Object.keys(porPar).map((k) => porPar[k]).sort((a, b) =>
+    (a.de === eu ? 0 : 1) - (b.de === eu ? 0 : 1) || pos(outro(a)) - pos(outro(b)));
+  return { deve: deve, receber: receber, linhas: linhas };
+}
+
+// --- Ícones e filtros da lista ---
+
+/**
+ * Categoria (livre em cada grupo) -> ícone: o primeiro cuja palavra-chave começa alguma palavra
+ * do nome, sem acento. Sem correspondência (ou sem categoria): a etiqueta.
+ */
+const ICONES_CATEGORIA = [
+  ['talher', ['aliment', 'restaurante', 'comida', 'refeic', 'lanche', 'cafe', 'jantar', 'almoco', 'delivery']],
+  ['cesta', ['mercado', 'supermercado', 'feira', 'padaria', 'hortifruti']],
+  ['aviao', ['viage', 'aviao', 'voo', 'passage', 'aereo']],
+  ['carro', ['transporte', 'taxi', 'uber', 'onibus', 'metro', 'trem', 'combust', 'gasolina', 'carro', 'estacionamento', 'pedagio']],
+  ['cama', ['hosped', 'hotel', 'airbnb', 'pousada', 'hostel']],
+  ['ingresso', ['passeio', 'ingresso', 'museu', 'lazer', 'turismo', 'show', 'tour', 'entreten', 'cinema']],
+  ['raio', ['conta', 'luz', 'energia', 'agua', 'gas', 'internet', 'telefone', 'celular', 'condominio', 'iptu']],
+  ['casa', ['aluguel', 'casa', 'moradia', 'manutenc', 'limpeza', 'reforma', 'faxina']],
+  ['pilula', ['farmacia', 'remedio', 'medicamento', 'drogaria']],
+  ['coracao', ['saude', 'medic', 'plano', 'consulta', 'exame']],
+];
+function iconeCategoria(categoria) {
+  const ps = semAcento(categoria).split(/[^a-z0-9]+/).filter(Boolean);
+  const achado = ICONES_CATEGORIA.find((ic) => ic[1].some((k) => ps.some((p) => p.indexOf(k) === 0)));
+  return achado ? achado[0] : 'etiqueta';
+}
+
+const SEM_CATEGORIA = '__sem'; // no filtro: despesas sem categoria
+
+/** Filtro da lista: busca na descrição, pessoa, tipo (despesa ou pagamento), categorias, moedas e período. */
+function filtroVazio() {
+  return { texto: '', pessoa: '', tipo: '', categorias: [], moedas: [], periodo: '', de: '', ate: '' };
+}
+function filtroAtivo(f) {
+  return !!(f.texto.trim() || f.pessoa || f.tipo || f.categorias.length || f.moedas.length || f.periodo);
+}
+
+/** "2026-03-01" + n dias. */
+function somarDias(iso, n) {
+  const p = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10);
+}
+
+/** Período do filtro -> {de, ate} (AAAA-MM-DD, '' = sem limite). O fim do mês é "-31": comparação de texto. */
+function intervaloPeriodo(f, hoje) {
+  const mes = hoje.slice(0, 7);
+  if (f.periodo === 'mes') return { de: mes + '-01', ate: mes + '-31' };
+  if (f.periodo === 'mes_passado') {
+    const ant = somarDias(mes + '-01', -1).slice(0, 7);
+    return { de: ant + '-01', ate: ant + '-31' };
+  }
+  if (f.periodo === '30d') return { de: somarDias(hoje, -29), ate: hoje };
+  if (f.periodo === 'outro') return { de: f.de || '', ate: f.ate || '' };
+  return { de: '', ate: '' };
+}
+
+/**
+ * Lançamentos que passam no filtro. Busca: todas as palavras digitadas na descrição, sem acento.
+ * Pessoa: quem pagou ou participou (também nos pagamentos). Moeda: a da compra, de qualquer fonte
+ * ou a transferida no acerto cruzado. Categoria só existe em despesas.
+ */
+function filtrarLancamentos(ls, f, hoje) {
+  const termos = semAcento(f.texto).split(/\s+/).filter(Boolean);
+  const p = intervaloPeriodo(f, hoje);
+  return ls.filter((l) => {
+    const desc = semAcento(l.descricao);
+    if (termos.some((t) => desc.indexOf(t) < 0)) return false;
+    if (f.pessoa && l.pagador !== f.pessoa && lista(l.participantes).indexOf(f.pessoa) < 0) return false;
+    if (f.tipo && (f.tipo === 'despesa') !== (l.tipo === 'despesa')) return false;
+    if (f.categorias.length && (l.tipo !== 'despesa' || f.categorias.indexOf(l.categoria || SEM_CATEGORIA) < 0)) return false;
+    if (f.moedas.length) {
+      const ms = [l.moeda, l.moeda_paga].concat(lerFontes(l.fontes).map((x) => x.moeda));
+      if (!ms.some((m) => f.moedas.indexOf(m) >= 0)) return false;
+    }
+    if (p.de && String(l.data) < p.de) return false;
+    if (p.ate && String(l.data) > p.ate) return false;
+    return true;
+  });
+}
+
+/**
+ * Total das despesas confirmadas da lista, por moeda do desembolso (as fontes ou a própria compra),
+ * como o total do cabeçalho. Com `soMoedas`, só essas moedas.
+ */
+function totaisDespesas(ls, soMoedas) {
+  const r = {};
+  ls.forEach((l) => {
+    if (l.tipo !== 'despesa' || l.status !== 'confirmado') return;
+    const fs = lerFontes(l.fontes);
+    (fs.length ? fs : [{ moeda: l.moeda, valor: Number(l.valor) }]).forEach((x) => {
+      if (soMoedas && soMoedas.length && soMoedas.indexOf(x.moeda) < 0) return;
+      r[x.moeda] = (r[x.moeda] || 0) + x.valor;
     });
   });
   return r;
@@ -868,6 +1034,8 @@ let erroRede = '';
 let filtroPendentes = false;
 const MESES_INICIAIS = 2;
 let mesesVisiveis = MESES_INICIAIS;   // a lista mostra os meses mais recentes; "Mostrar <mês>" acrescenta um
+let filtro = filtroVazio();           // busca e filtros da lista: só na memória; trocar de grupo limpa
+let buscaAberta = false;
 let enviados = [];                    // aceitos pelo servidor; seguem aplicados até o próximo estado chegar
 let emVoo = null;                     // uid do item da fila sendo enviado
 
@@ -1133,6 +1301,8 @@ function esc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 function maiuscula(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+/** Ícone do sprite (#i-<nome>, no fim do body), na cor do texto em volta. */
+function icone(nome) { return '<svg class="ic" aria-hidden="true" focusable="false"><use href="#i-' + nome + '"/></svg>'; }
 const $ = (sel, raiz) => (raiz || document).querySelector(sel);
 const $$ = (sel, raiz) => Array.from((raiz || document).querySelectorAll(sel));
 
@@ -1240,8 +1410,9 @@ function colunasChips(n) {
   return n <= 3 ? Math.max(n, 1) : n === 4 ? 2 : n <= 6 || n === 9 ? 3 : 4;
 }
 
-function chips(grupo, opcoes, selecionados, multi, rotulos) {
-  return '<div class="chips" style="--cols:' + colunasChips(opcoes.length) + '" data-grupo="' + grupo + '" data-multi="' + (multi ? '1' : '') + '" role="group">' +
+/** fluxo: chips da largura do texto, em linhas corridas (nomes longos, ex.: categorias no filtro). */
+function chips(grupo, opcoes, selecionados, multi, rotulos, fluxo) {
+  return '<div class="chips' + (fluxo ? ' fluxo' : '') + '" style="--cols:' + colunasChips(opcoes.length) + '" data-grupo="' + grupo + '" data-multi="' + (multi ? '1' : '') + '" role="group">' +
     opcoes.map((o, i) => '<button type="button" class="chip" data-valor="' + esc(o) + '" aria-pressed="' +
       (selecionados.indexOf(o) >= 0) + '">' + esc(rotulos ? rotulos[i] : o) + '</button>').join('') + '</div>';
 }
@@ -1941,6 +2112,8 @@ async function abrirGrupo(id) {
   enviados = [];
   filtroPendentes = false;
   mesesVisiveis = MESES_INICIAIS;
+  filtro = filtroVazio();
+  buscaAberta = false;
   rede = 'ocioso';
   erroRede = '';
   window.scrollTo(0, 0);
@@ -2132,7 +2305,7 @@ function abrirConfirmarPendentes() {
       const vs = valoresItem(l);
       return candHtml(i, true,
         despesa ? (l.descricao || maiuscula(l.categoria) || 'Despesa') : l.pagador + ' pagou ' + lista(l.participantes)[0],
-        dataBr(l.data) + (despesa ? ' · ' + l.pagador + ' pagou para ' + textoParaQuem(l.pagador, lista(l.participantes), participantes(), l.pesos) : ''),
+        dataBr(l.data) + (despesa ? ' · ' + l.pagador + ' → ' + textoParaQuem(l.pagador, lista(l.participantes), participantes(), l.pesos) : ''),
         vs.valor, '');
     }).join('') + '</div>' +
     '<p class="erro" data-erro role="alert"></p>' +
@@ -2292,15 +2465,19 @@ function itemHtml(l, dup) {
   if (despesa) {
     const cat = maiuscula(l.categoria);
     const repete = cat && l.descricao.trim().toLowerCase() === l.categoria.toLowerCase();
+    // A categoria aparece no ícone; o texto dela fica só para o leitor de tela.
     titulo = l.descricao
-      ? esc(l.descricao) + (cat && !repete ? '<span class="item-cat"> – ' + esc(cat) + '</span>' : '')
+      ? esc(l.descricao) + (cat && !repete ? '<span class="sr"> – ' + esc(cat) + '</span>' : '')
       : esc(cat || 'Despesa');
-    sub = esc(l.pagador) + ' pagou para ' + esc(textoParaQuem(l.pagador, parts, participantes(), l.pesos));
+    // "A → todos" na tela; o leitor de tela lê "A pagou para todos".
+    sub = esc(l.pagador) + '<span aria-hidden="true"> → </span><span class="sr"> pagou para </span>' +
+      esc(textoParaQuem(l.pagador, parts, participantes(), l.pesos));
   } else {
     // Pagamento e acerto cruzado: ressarcimento de quem pagou para quem recebeu.
     titulo = esc(l.pagador) + ' pagou ' + esc(parts[0] || '');
-    sub = esc(l.descricao);
+    sub = esc(l.descricao || (l.tipo === 'acerto_cruzado' ? 'Acerto em outra moeda' : 'Pagamento'));
   }
+  const ic = despesa ? iconeCategoria(l.categoria) : l.tipo === 'acerto_cruzado' ? 'cambio' : 'seta';
   const etiquetas = [];
   if (l.status === 'pendente') etiquetas.push('<span class="etiqueta pendente">pendente</span>');
   if (dup && dup[l.id]) etiquetas.push('<span class="etiqueta duplicado">parece duplicado</span>');
@@ -2309,24 +2486,36 @@ function itemHtml(l, dup) {
   const esq = [sub].concat(etiquetas).filter(Boolean).join(' ');
   const vs = valoresItem(l);
   return '<button type="button" class="item' + (despesa ? '' : ' repasse') + '" data-id="' + esc(l.id) + '">' +
+    '<span class="item-icone">' + icone(ic) + '</span><span class="item-corpo">' +
     '<span class="item-linha"><span class="item-titulo">' + titulo + '</span>' +
       '<span class="item-valor">' + esc(vs.valor) + '</span></span>' +
     (esq || vs.sub ? '<span class="item-linha"><span class="item-sub">' + esq + '</span>' +
       (vs.sub ? '<span class="item-sub dir">' + esc(vs.sub) + '</span>' : '') + '</span>' : '') +
-    '</button>';
+    '</span></button>';
 }
 
 function renderLista() {
-  let ls = lancamentosVisiveis();
-  if (filtroPendentes) ls = ls.filter((l) => l.status === 'pendente');
+  const todos = lancamentosVisiveis();
+  let ls = filtroPendentes ? todos.filter((l) => l.status === 'pendente') : todos;
+  const filtrando = filtroAtivo(filtro);
+  if (filtrando) ls = filtrarLancamentos(ls, filtro, hoje());
   if (!ls.length) {
-    return '<p class="vazio">' + (filtroPendentes ? 'Nenhum lançamento pendente.' : 'Nenhum lançamento ainda. Toque em “+ Nova despesa”.') + '</p>';
+    return '<p class="vazio">' + (filtrando ? 'Nenhum lançamento encontrado.'
+      : filtroPendentes ? 'Nenhum lançamento pendente.' : 'Nenhum lançamento ainda. Toque em “+ Nova despesa”.') + '</p>';
   }
   // A Casa acumula lançamentos sem fim: só os meses mais recentes, com um botão para o anterior.
-  // Os pendentes aparecem todos, para conferir antes de confirmar.
-  const r = filtroPendentes ? { visiveis: ls, proximo: '', variosMeses: false } : recortarPorMes(ls, mesesVisiveis);
+  // Os pendentes e o resultado da busca ou dos filtros aparecem todos.
+  const r = recortarPorMes(ls, filtroPendentes || filtrando ? Infinity : mesesVisiveis);
   let html = filtroPendentes ? '<button type="button" class="primario largo" id="btnLote">Confirmar pendentes</button>' : '';
-  const dup = duplicados(ls, lerG('naoDuplicados', []));
+  if (filtrando) {
+    const tot = totaisDespesas(ls, filtro.moedas);
+    const txt = Object.keys(tot).map((m) => dinheiro(tot[m], m)).join(' · ');
+    const semPendentes = ls.some((l) => l.tipo === 'despesa' && l.status !== 'confirmado');
+    html += '<p class="resumo-filtro">' + esc(plural(ls.length, 'lançamento', 'lançamentos') +
+      (txt ? ' · despesas: ' + txt + (semPendentes ? ' (sem os pendentes)' : '') : '')) + '</p>';
+  }
+  // Comparando com a lista inteira: a etiqueta não some quando o outro lançamento fica fora do filtro.
+  const dup = duplicados(todos, lerG('naoDuplicados', []));
   let dia = null;
   let mes = null;
   r.visiveis.forEach((l) => {
@@ -2350,8 +2539,8 @@ function renderLista() {
 }
 
 /** Uma dívida: nomes à esquerda e um botão por moeda, que abre o pagamento já preenchido. */
-function dividaHtml(de, para, valores) {
-  return '<div class="divida"><span class="divida-nomes">' + esc(deve(de, para)) + '</span><span class="divida-valores">' +
+function dividaHtml(de, para, valores, texto) {
+  return '<div class="divida"><span class="divida-nomes">' + esc(texto || deve(de, para)) + '</span><span class="divida-valores">' +
     Object.keys(valores).map((m) => '<button type="button" class="pilula" data-pagar="' +
       esc(JSON.stringify({ de: de, para: para, moeda: m, valor: valores[m] })) + '">' + esc(dinheiro(valores[m], m)) + '</button>').join('') +
     '</span></div>';
@@ -2359,43 +2548,68 @@ function dividaHtml(de, para, valores) {
 
 function deve(de, para) { return de + ' deve a ' + para; }
 
-function renderAcerto() {
-  const tpm = estado.transferencias_por_moeda || {};
-  const comDivida = Object.keys(tpm).filter((m) => tpm[m].length);
+/** Totais de um lado do resumo ("Você deve", "A receber"): um valor por moeda, ou um traço. */
+function totaisSituacao(totais, classe) {
+  const ms = Object.keys(totais);
+  return ms.length ? ms.map((m) => '<b class="' + classe + '">' + esc(dinheiro(totais[m], m)) + '</b>').join('')
+    : '<b class="zero">—</b>';
+}
+
+/** Todas as transferências sugeridas, por moeda ou por par (o alternador só com dívidas em mais de uma moeda). */
+function todosAcertosHtml(tpm, comDivida) {
   // Com uma só moeda as duas visões são iguais: sem alternador.
   const visao = comDivida.length > 1 ? ler(LS.visao, 'moeda') : 'moeda';
   let html = '';
   if (visao === 'par') {
-    const pares = estado.por_par || [];
-    if (pares.length) html = '<div class="cartao">' + pares.map((p) => dividaHtml(p.de, p.para, p.valores)).join('') + '</div>';
+    html = '<div class="cartao">' + (estado.por_par || []).map((p) => dividaHtml(p.de, p.para, p.valores)).join('') + '</div>';
   } else {
     comDivida.forEach((m) => {
       html += '<div class="cartao">' + (comDivida.length > 1 ? '<h3>Em ' + esc(rotuloMoeda(m)) + '</h3>' : '') +
         tpm[m].map((t) => dividaHtml(t.de, t.para, { [m]: t.valor })).join('') + '</div>';
     });
   }
-  html = html ? '<p class="dica">Toque numa dívida para registrar o pagamento.</p>' + html
-    : '<p class="vazio">Ninguém deve nada a ninguém.</p>';
+  return (comDivida.length > 1 ? '<div class="segmentado" role="group" aria-label="Visão">' +
+      '<button type="button" data-visao="moeda" aria-pressed="' + (visao !== 'par') + '">Por moeda</button>' +
+      '<button type="button" data-visao="par" aria-pressed="' + (visao === 'par') + '">Por par</button>' +
+    '</div>' : '') + html;
+}
+
+/** O acerto de quem usa o aparelho no topo; o de todos e os saldos, recolhidos abaixo. */
+function renderAcerto() {
+  const tpm = estado.transferencias_por_moeda || {};
+  const comDivida = Object.keys(tpm).filter((m) => tpm[m].length);
+  const quem = eu();
+  const s = minhaSituacao(tpm, quem, participantes());
+  let html;
+  if (s.linhas.length) {
+    html = '<div class="cartao"><div class="situacao">' +
+        '<div><span class="rotulo">Você deve</span>' + totaisSituacao(s.deve, 'neg') + '</div>' +
+        '<div><span class="rotulo">A receber</span>' + totaisSituacao(s.receber, 'pos') + '</div>' +
+      '</div>' + s.linhas.map((p) => dividaHtml(p.de, p.para, p.valores,
+        p.de === quem ? 'Você deve a ' + p.para : p.de + ' te deve')).join('') + '</div>';
+  } else {
+    html = '<p class="vazio">' + (comDivida.length ? 'Você não deve nada e ninguém te deve.' : 'Ninguém deve nada a ninguém.') + '</p>';
+  }
+  // Os acertos entre os outros, para quem registra um pagamento por outra pessoa.
+  if (comDivida.some((m) => tpm[m].some((t) => t.de !== quem && t.para !== quem))) {
+    html += '<details id="detAcertos"><summary>Ver todos os acertos</summary>' + todosAcertosHtml(tpm, comDivida) + '</details>';
+  }
 
   const spm = estado.saldos_por_moeda || {};
   const ms = Object.keys(spm);
-  let saldos = '';
   if (ms.length) {
-    saldos = '<details><summary>Saldos por pessoa</summary><table class="saldos"><thead><tr><th>Pessoa</th>' +
+    html += '<details id="detSaldos"><summary>Saldos por pessoa</summary><table class="saldos"><thead><tr>' +
+      '<th><span class="sr">Pessoa</span></th>' +
       ms.map((m) => '<th>' + esc(rotuloMoeda(m)) + '</th>').join('') + '</tr></thead><tbody>' +
       participantes().map((n) => '<tr><td>' + esc(n) + '</td>' + ms.map((m) => {
         const v = spm[m][n] || 0;
         return '<td class="' + (v > 0 ? 'pos' : v < 0 ? 'neg' : '') + '">' + esc(formatarNumero(v, casas(m))) + '</td>';
       }).join('') + '</tr>').join('') +
-      '</tbody></table><p class="dica">Positivo = tem a receber. Cada moeda é um livro separado.</p></details>';
+      '</tbody></table></details>';
   }
   const naoSinc = fila.filter((it) => it.acao !== 'moeda').length;
-  return (comDivida.length > 1 ? '<div class="segmentado" role="group" aria-label="Visão">' +
-      '<button type="button" data-visao="moeda" aria-pressed="' + (visao !== 'par') + '">Por moeda</button>' +
-      '<button type="button" data-visao="par" aria-pressed="' + (visao === 'par') + '">Por par</button>' +
-    '</div>' : '') +
-    (naoSinc ? '<p class="nota">Ainda não inclui ' + (naoSinc > 1 ? naoSinc + ' lançamentos não sincronizados' : '1 lançamento não sincronizado') + '.</p>' : '') +
-    html + saldos;
+  return (naoSinc ? '<p class="nota">Ainda não inclui ' + (naoSinc > 1 ? naoSinc + ' lançamentos não sincronizados' : '1 lançamento não sincronizado') + '.</p>' : '') +
+    html;
 }
 
 /** Indicador discreto de sincronização: {classe, texto, rotulo acessível}. */
@@ -2418,33 +2632,134 @@ function renderPrincipal() {
   if (!pend) filtroPendentes = false;
   const sync = estadoSync();
 
-  const detalhes = document.querySelector('details');
-  const detalhesAberto = detalhes && detalhes.open;
+  montarPrincipal();
+  const abertos = $$('details[open]', raiz).map((d) => d.id);
   const rolagem = window.scrollY;
 
-  raiz.innerHTML =
-    '<header class="topo">' +
-      '<div class="topo-linha"><h1>' + (grupos.length > 1
-        ? '<button type="button" class="titulo-grupo" id="btnGrupo" aria-label="Trocar de grupo (' + esc(estado.nome_viagem || 'Despesas') + ')">' +
-          esc(estado.nome_viagem || 'Despesas') + ' <span aria-hidden="true">▾</span></button>'
-        : esc(estado.nome_viagem || 'Despesas')) + '</h1>' +
-      '<button type="button" class="sync ' + sync.classe + '" id="btnSync" aria-label="' + esc(sync.rotulo) + '">' + esc(sync.texto) + '</button>' +
-      '<button type="button" class="icone" id="btnMenu" aria-label="Menu">☰</button></div>' +
-      '<div class="totais" aria-label="Total desembolsado por moeda">' + (txtTotais ? esc(txtTotais) : '—') + '</div>' +
-    '</header>' +
-    '<main>' +
-      ((estado.invalidos || []).length ? '<div class="aviso-caixa">' + estado.invalidos.length +
-        ' linha(s) da planilha com erro foram ignoradas no cálculo. Veja a aba Resumo.</div>' : '') +
-      '<section class="bloco" id="blocoAcerto"><h2>Acerto de contas</h2>' + renderAcerto() + '</section>' +
-      '<section class="bloco"><h2>Lançamentos<span class="espaco"></span>' +
-        (pend ? '<button type="button" class="selo' + (filtroPendentes ? ' ativo' : '') + '" id="seloPend" aria-pressed="' + filtroPendentes + '">' +
-          pend + ' pendente' + (pend > 1 ? 's' : '') + '</button>' : '') +
-      '</h2>' + renderLista() + '</section>' +
-    '</main>' +
-    '<button type="button" class="primario fab" id="fab">+ Nova despesa</button>';
+  $('#topo').innerHTML =
+    '<div class="topo-linha"><h1>' + (grupos.length > 1
+      ? '<button type="button" class="titulo-grupo" id="btnGrupo" aria-label="Trocar de grupo (' + esc(estado.nome_viagem || 'Despesas') + ')">' +
+        esc(estado.nome_viagem || 'Despesas') + ' <span aria-hidden="true">▾</span></button>'
+      : esc(estado.nome_viagem || 'Despesas')) + '</h1>' +
+    '<button type="button" class="sync ' + sync.classe + '" id="btnSync" aria-label="' + esc(sync.rotulo) + '">' + esc(sync.texto) + '</button>' +
+    '<button type="button" class="icone" id="btnMenu" aria-label="Menu">☰</button></div>' +
+    '<div class="totais" aria-label="Total desembolsado por moeda">' + (txtTotais ? esc(txtTotais) : '—') + '</div>';
+  $('#avisos').innerHTML = (estado.invalidos || []).length ? '<div class="aviso-caixa">' + estado.invalidos.length +
+    ' linha(s) da planilha com erro foram ignoradas no cálculo. Veja a aba Resumo.</div>' : '';
+  $('#blocoAcerto').innerHTML = '<h2>Acerto de contas</h2>' + renderAcerto();
+  const nf = quantosFiltros(filtro);
+  $('#tituloLista').innerHTML = 'Lançamentos<span class="espaco"></span>' +
+    (pend ? '<button type="button" class="selo' + (filtroPendentes ? ' ativo' : '') + '" id="seloPend" aria-pressed="' + filtroPendentes + '">' +
+      pend + ' pendente' + (pend > 1 ? 's' : '') + '</button>' : '') +
+    '<button type="button" class="icone ferramenta' + (buscaAberta || filtro.texto ? ' ativo' : '') + '" id="btnBusca" aria-label="Buscar na descrição">' +
+      icone('busca') + '</button>' +
+    '<button type="button" class="icone ferramenta' + (nf ? ' ativo' : '') + '" id="btnFiltros" aria-label="Filtros' +
+      (nf ? ' (' + nf + ' ativo' + (nf > 1 ? 's' : '') + ')' : '') + '">' + icone('filtros') +
+      (nf ? '<span class="contador" aria-hidden="true">' + nf + '</span>' : '') + '</button>';
+  renderResultados();
 
-  if (detalhesAberto) { const d = document.querySelector('details'); if (d) d.open = true; }
+  abertos.forEach((id) => { const d = document.getElementById(id); if (d) d.open = true; });
   window.scrollTo(0, rolagem);
+}
+
+/**
+ * Esqueleto da tela principal, montado uma vez (as outras telas o substituem): os redesenhos trocam só
+ * o conteúdo das partes, e o campo de busca continua o mesmo, sem perder o foco nem o teclado a cada
+ * sincronização.
+ */
+function montarPrincipal() {
+  if ($('#principal')) return;
+  raiz.innerHTML = '<div id="principal">' +
+    '<header class="topo" id="topo"></header>' +
+    '<main><div id="avisos"></div>' +
+      '<section class="bloco" id="blocoAcerto"></section>' +
+      '<section class="bloco"><h2 id="tituloLista"></h2>' +
+        '<div class="busca oculto" id="buscaLinha">' +
+          '<input type="search" id="busca" enterkeyhint="search" autocomplete="off" placeholder="Buscar na descrição" aria-label="Buscar na descrição">' +
+          '<button type="button" id="buscaFechar">Fechar</button></div>' +
+        '<div id="filtrosAtivos"></div><div id="lista"></div>' +
+      '</section>' +
+    '</main>' +
+    '<button type="button" class="primario fab" id="fab">+ Nova despesa</button></div>';
+}
+
+/** Campo de busca, filtros ativos e lista: o que muda a cada letra digitada. */
+function renderResultados() {
+  const busca = $('#busca');
+  $('#buscaLinha').classList.toggle('oculto', !(buscaAberta || filtro.texto));
+  if (document.activeElement !== busca) busca.value = filtro.texto;
+  $('#filtrosAtivos').innerHTML = filtrosAtivosHtml();
+  $('#lista').innerHTML = renderLista();
+}
+
+/** Quantos filtros (sem contar a busca) estão ligados: pessoa, tipo, categorias, moedas, período. */
+function quantosFiltros(f) {
+  return [f.pessoa, f.tipo, f.categorias.length, f.moedas.length, f.periodo].filter(Boolean).length;
+}
+
+function textoPeriodo(f) {
+  if (f.periodo === 'mes') return 'Este mês';
+  if (f.periodo === 'mes_passado') return 'Mês passado';
+  if (f.periodo === '30d') return 'Últimos 30 dias';
+  if (f.de && f.ate) return dataBr(f.de) + ' a ' + dataBr(f.ate);
+  return f.de ? 'Desde ' + dataBr(f.de) : 'Até ' + dataBr(f.ate);
+}
+
+/** Um botão por filtro ligado; tocar tira aquele filtro. */
+function filtrosAtivosHtml() {
+  const f = filtro, cs = [];
+  const chip = (campo, valor, texto) => cs.push('<button type="button" class="filtro-ativo" data-tirar="' +
+    esc(JSON.stringify([campo, valor])) + '" aria-label="Tirar o filtro ' + esc(texto) + '">' + esc(texto) + '</button>');
+  if (f.pessoa) chip('pessoa', '', f.pessoa);
+  if (f.tipo) chip('tipo', '', f.tipo === 'despesa' ? 'Despesas' : 'Pagamentos');
+  f.categorias.forEach((c) => chip('categorias', c, c === SEM_CATEGORIA ? 'Sem categoria' : maiuscula(c)));
+  f.moedas.forEach((m) => chip('moedas', m, rotuloMoeda(m)));
+  if (f.periodo) chip('periodo', '', textoPeriodo(f));
+  if (!cs.length) return '';
+  return '<div class="filtros-ativos">' + cs.join('') +
+    (cs.length > 1 ? '<button type="button" class="link" id="limparFiltros">Limpar</button>' : '') + '</div>';
+}
+
+/** Os filtros da lista numa folha; a busca continua no campo dela. */
+function abrirFiltros() {
+  const f = filtro;
+  const usadas = lancamentosVisiveis().map((l) => l.categoria).filter(Boolean);
+  const cats = categorias().concat(usadas.filter((c, i) => categorias().indexOf(c) < 0 && usadas.indexOf(c) === i));
+  const ms = moedas().map((m) => m.moeda);
+  abrirDialogo('Filtros',
+    '<div class="campo"><span class="rotulo">Pessoa (pagou ou participou)</span>' + chips('fPessoa', participantes(), [f.pessoa], false) + '</div>' +
+    '<div class="campo"><span class="rotulo">Tipo</span>' +
+      chips('fTipo', ['despesa', 'pagamento'], [f.tipo], false, ['Despesas', 'Pagamentos']) + '</div>' +
+    '<div class="campo"><span class="rotulo">Categoria</span>' + chips('fCategoria', cats.concat([SEM_CATEGORIA]), f.categorias, true,
+      cats.map(maiuscula).concat(['Sem categoria']), true) + '</div>' +
+    (ms.length > 1 ? '<div class="campo"><span class="rotulo">Moeda (da compra ou de onde saiu o dinheiro)</span>' +
+      chips('fMoeda', ms, f.moedas, true, ms.map(rotuloMoeda)) + '</div>' : '') +
+    '<div class="campo"><span class="rotulo">Período</span>' + chips('fPeriodo', ['mes', 'mes_passado', '30d', 'outro'], [f.periodo], false,
+      ['Este mês', 'Mês passado', 'Últimos 30 dias', 'Outro']) + '</div>' +
+    '<div class="grade2' + (f.periodo === 'outro' ? '' : ' oculto') + '" id="fDatas">' +
+      '<label class="campo"><span>De</span><input type="date" id="fDe" value="' + esc(f.de) + '"></label>' +
+      '<label class="campo"><span>Até</span><input type="date" id="fAte" value="' + esc(f.ate) + '"></label></div>' +
+    '<div class="dlg-acoes"><button type="button" data-limpar>Limpar</button><button type="submit" class="primario">Mostrar</button></div>',
+    () => {
+      let periodo = lerChips(dlgForm, 'fPeriodo')[0] || '';
+      const de = periodo === 'outro' ? $('#fDe', dlgForm).value : '';
+      const ate = periodo === 'outro' ? $('#fAte', dlgForm).value : '';
+      if (periodo === 'outro' && !de && !ate) periodo = '';
+      filtro = {
+        texto: filtro.texto, pessoa: lerChips(dlgForm, 'fPessoa')[0] || '', tipo: lerChips(dlgForm, 'fTipo')[0] || '',
+        categorias: lerChips(dlgForm, 'fCategoria'), moedas: lerChips(dlgForm, 'fMoeda'), periodo: periodo, de: de, ate: ate,
+      };
+      fecharDialogo();
+      render();
+    });
+  $('.chips[data-grupo="fPeriodo"]', dlgForm).addEventListener('change', () => {
+    $('#fDatas', dlgForm).classList.toggle('oculto', lerChips(dlgForm, 'fPeriodo')[0] !== 'outro');
+  });
+  $('[data-limpar]', dlgForm).onclick = () => {
+    filtro = Object.assign(filtroVazio(), { texto: filtro.texto });
+    fecharDialogo();
+    render();
+  };
 }
 
 // Delegação de eventos da tela principal
@@ -2457,6 +2772,22 @@ raiz.addEventListener('click', (ev) => {
   if (t.closest('#seloPend')) { filtroPendentes = !filtroPendentes; return render(); }
   if (t.closest('#btnLote')) return abrirConfirmarPendentes();
   if (t.closest('#btnMais')) { mesesVisiveis++; return render(); }
+  if (t.closest('#btnBusca')) {
+    buscaAberta = true;
+    render();
+    return $('#busca').focus(); // no mesmo toque: o iOS só abre o teclado assim
+  }
+  if (t.closest('#buscaFechar')) { buscaAberta = false; filtro.texto = ''; return render(); }
+  if (t.closest('#btnFiltros')) return abrirFiltros();
+  if (t.closest('#limparFiltros')) { filtro = Object.assign(filtroVazio(), { texto: filtro.texto }); return render(); }
+  const tirar = t.closest('[data-tirar]');
+  if (tirar) {
+    const [campo, valor] = JSON.parse(tirar.dataset.tirar);
+    if (Array.isArray(filtro[campo])) filtro[campo] = filtro[campo].filter((v) => v !== valor);
+    else filtro[campo] = '';
+    if (campo === 'periodo') { filtro.de = ''; filtro.ate = ''; }
+    return render();
+  }
   const visao = t.closest('[data-visao]');
   if (visao) { gravar(LS.visao, visao.dataset.visao); return render(); }
   const divida = t.closest('.divida');
@@ -2475,6 +2806,15 @@ raiz.addEventListener('click', (ev) => {
     else if (l.tipo === 'pagamento') abrirPagamento(l);
     else abrirAcerto(l);
   }
+});
+// A busca redesenha só a lista: o campo continua com o foco.
+raiz.addEventListener('input', (ev) => {
+  if (ev.target.id !== 'busca') return;
+  filtro.texto = ev.target.value;
+  $('#lista').innerHTML = renderLista();
+});
+raiz.addEventListener('keydown', (ev) => {
+  if (ev.target.id === 'busca' && ev.key === 'Enter') ev.target.blur(); // fecha o teclado
 });
 
 // ---------------------------------------------------------------------------
