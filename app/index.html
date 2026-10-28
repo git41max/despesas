@@ -222,8 +222,6 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 /* Chips em grade de colunas iguais (--cols definido em chips()). */
 .chips { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 6px; }
 .chip { border-radius: 999px; min-height: 44px; font-size: 15px; padding: 0 8px; background: var(--superficie2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chips.fluxo { display: flex; flex-wrap: wrap; }
-.chips.fluxo .chip { flex: 1 1 auto; padding: 0 14px; }
 .chip[aria-pressed="true"] { background: var(--primaria); color: var(--primaria-texto); border-color: transparent; }
 .pesos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
 .pesos label { display: grid; grid-template-columns: 1fr 64px; align-items: center; gap: 6px; font-size: 15px; }
@@ -314,7 +312,7 @@ const API_URL = '';
 const VERSAO = '1.8.0';
 
 // <utils> — funções puras, testadas em tests/app.test.js
-const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
+const CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'farmácia', 'outros'];
 
 function p10(n) { let r = 1; for (let i = 0; i < n; i++) r *= 10; return r; }
 
@@ -1410,9 +1408,10 @@ function colunasChips(n) {
   return n <= 3 ? Math.max(n, 1) : n === 4 ? 2 : n <= 6 || n === 9 ? 3 : 4;
 }
 
-/** fluxo: chips da largura do texto, em linhas corridas (nomes longos, ex.: categorias no filtro). */
-function chips(grupo, opcoes, selecionados, multi, rotulos, fluxo) {
-  return '<div class="chips' + (fluxo ? ' fluxo' : '') + '" style="--cols:' + colunasChips(opcoes.length) + '" data-grupo="' + grupo + '" data-multi="' + (multi ? '1' : '') + '" role="group">' +
+/** maxCols: limite de colunas para nomes longos (as categorias: "Alimentação" não cabe em 4 no iPhone). */
+function chips(grupo, opcoes, selecionados, multi, rotulos, maxCols) {
+  const cols = Math.min(colunasChips(opcoes.length), maxCols || 4);
+  return '<div class="chips" style="--cols:' + cols + '" data-grupo="' + grupo + '" data-multi="' + (multi ? '1' : '') + '" role="group">' +
     opcoes.map((o, i) => '<button type="button" class="chip" data-valor="' + esc(o) + '" aria-pressed="' +
       (selecionados.indexOf(o) >= 0) + '">' + esc(rotulos ? rotulos[i] : o) + '</button>').join('') + '</div>';
 }
@@ -1530,7 +1529,7 @@ function abrirDespesa(l) {
       chips('participantes', nomes, lista(d.participantes), true) + '</div>' +
     '<div class="campo"><button type="button" class="link" style="justify-self:start" id="fPesosBtn"></button><div id="fPesos" class="pesos oculto"></div></div>' +
     campoData(d.data) +
-    '<div class="campo"><span class="rotulo">Categoria (opcional)</span>' + chips('categoria', cats, [d.categoria], false, cats.map(maiuscula)) + '</div>' +
+    '<div class="campo"><span class="rotulo">Categoria (opcional)</span>' + chips('categoria', cats, [d.categoria], false, cats.map(maiuscula), 3) + '</div>' +
     duplicadoHtml(l, outros) +
     autoriaHtml(l) +
     '<p class="erro" data-erro role="alert"></p>' +
@@ -2731,7 +2730,7 @@ function abrirFiltros() {
     '<div class="campo"><span class="rotulo">Tipo</span>' +
       chips('fTipo', ['despesa', 'pagamento'], [f.tipo], false, ['Despesas', 'Pagamentos']) + '</div>' +
     '<div class="campo"><span class="rotulo">Categoria</span>' + chips('fCategoria', cats.concat([SEM_CATEGORIA]), f.categorias, true,
-      cats.map(maiuscula).concat(['Sem categoria']), true) + '</div>' +
+      cats.map(maiuscula).concat(['Nenhuma']), 3) + '</div>' +
     (ms.length > 1 ? '<div class="campo"><span class="rotulo">Moeda (da compra ou de onde saiu o dinheiro)</span>' +
       chips('fMoeda', ms, f.moedas, true, ms.map(rotuloMoeda)) + '</div>' : '') +
     '<div class="campo"><span class="rotulo">Período</span>' + chips('fPeriodo', ['mes', 'mes_passado', '30d', 'outro'], [f.periodo], false,

@@ -9,7 +9,7 @@
  */
 
 var TIPOS = ['despesa', 'pagamento', 'acerto_cruzado'];
-var CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'outros'];
+var CATEGORIAS = ['alimentação', 'transporte', 'hospedagem', 'passeios', 'mercado', 'farmácia', 'outros'];
 var STATUS = ['confirmado', 'pendente'];
 var ORIGENS = ['manual', 'extrato', 'comprovante'];
 var MAX_FONTES = 3;
